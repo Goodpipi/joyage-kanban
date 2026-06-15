@@ -71,7 +71,8 @@ export function KanbanBoard() {
   const activeTask = tasks.find((t) => t.id === activeId) || null;
 
   const updateTask = (nt: Task) => setTasks((p) => p.map((x) => (x.id === nt.id ? nt : x)));
-  const deleteTask = (id: string) => setTasks((p) => p.filter((x) => x.id !== id));
+  const deleteTask = (id: string) =>
+    setTasks((p) => p.filter((x) => x.id !== id), { immediate: true });
 
   const addToColumn = (col: ColumnId) => {
     const id = uid();
@@ -240,6 +241,7 @@ export function KanbanBoard() {
         })}
         onSendToTodo={sendToTodo}
         onOpenTask={setOpenTaskId}
+        onDeleteTask={deleteTask}
       />
 
       <TaskDetailDialog

@@ -34,9 +34,10 @@ export function useKanbanSync(enabled: boolean) {
   }, []);
 
   const refresh = useCallback(async () => {
+    if (dirtyRef.current || savingRef.current) return;
     try {
       const snapshot = await getKanbanSnapshot();
-      if (!dirtyRef.current || snapshot.updatedAt !== updatedAtRef.current) {
+      if (snapshot.updatedAt !== updatedAtRef.current) {
         applySnapshot(snapshot.tasks, snapshot.updatedAt);
       }
       setSyncError(null);
@@ -50,6 +51,10 @@ export function useKanbanSync(enabled: boolean) {
   const flushSave = useCallback(async () => {
     if (!dirtyRef.current || savingRef.current) return;
     savingRef.current = true;
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
     try {
       const result = await saveKanbanSnapshotFn({
         data: {
@@ -58,36 +63,49 @@ export function useKanbanSync(enabled: boolean) {
         },
       });
       if ("conflict" in result) {
-        dirtyRef.current = false;
-        applySnapshot(result.snapshot.tasks, result.snapshot.updatedAt);
+        if (isNewer(result.snapshot.updatedAt, updatedAtRef.current ?? "")) {
+          dirtyRef.current = false;
+          applySnapshot(result.snapshot.tasks, result.snapshot.updatedAt);
+        } else {
+          dirtyRef.current = true;
+          setTimeout(() => void flushSave(), 300);
+        }
       } else {
         dirtyRef.current = false;
         applySnapshot(result.tasks, result.updatedAt);
       }
       setSyncError(null);
     } catch {
+      dirtyRef.current = true;
       setSyncError("保存失败，稍后重试");
     } finally {
       savingRef.current = false;
     }
   }, [applySnapshot]);
 
-  const scheduleSave = useCallback(() => {
-    dirtyRef.current = true;
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      void flushSave();
-    }, SAVE_DEBOUNCE_MS);
-  }, [flushSave]);
+  const scheduleSave = useCallback(
+    (immediate = false) => {
+      dirtyRef.current = true;
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      if (immediate) {
+        void flushSave();
+        return;
+      }
+      saveTimerRef.current = setTimeout(() => {
+        void flushSave();
+      }, SAVE_DEBOUNCE_MS);
+    },
+    [flushSave],
+  );
 
   const setTasksAndSave = useCallback(
-    (updater: Task[] | ((prev: Task[]) => Task[])) => {
+    (updater: Task[] | ((prev: Task[]) => Task[]), options?: { immediate?: boolean }) => {
       setTasks((prev) => {
         const next = typeof updater === "function" ? updater(prev) : updater;
         tasksRef.current = next;
         return next;
       });
-      scheduleSave();
+      scheduleSave(options?.immediate);
     },
     [scheduleSave],
   );
@@ -106,4 +124,8 @@ export function useKanbanSync(enabled: boolean) {
   }, [enabled, refresh, flushSave]);
 
   return { tasks, setTasks: setTasksAndSave, ready, syncError, refresh };
+}
+
+function isNewer(next: string, current: string): boolean {
+  return next > current;
 }

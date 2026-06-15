@@ -16,6 +16,10 @@ const DATA_FILE = path.join(
 
 let memorySnapshot: KanbanSnapshot | null = null;
 
+function isNewer(a: string, b: string): boolean {
+  return a > b;
+}
+
 async function readFromFile(): Promise<KanbanSnapshot | null> {
   try {
     const raw = await fs.readFile(DATA_FILE, "utf-8");
@@ -36,25 +40,32 @@ function seedSnapshot(): KanbanSnapshot {
   return { tasks: KANBAN_SEED, updatedAt: new Date().toISOString() };
 }
 
+function mergeSnapshots(a: KanbanSnapshot | null, b: KanbanSnapshot | null): KanbanSnapshot | null {
+  if (!a) return b;
+  if (!b) return a;
+  return isNewer(a.updatedAt, b.updatedAt) ? a : b;
+}
+
 async function persistSnapshot(snapshot: KanbanSnapshot): Promise<void> {
   memorySnapshot = snapshot;
-  try {
-    await writeToFile(snapshot);
-  } catch (error) {
-    console.warn("[kanban] failed to persist to file", error);
-  }
+  await writeToFile(snapshot);
 }
 
 export async function loadKanbanSnapshot(): Promise<KanbanSnapshot> {
   const fromFile = await readFromFile();
-  if (fromFile) {
-    if (!memorySnapshot || fromFile.updatedAt !== memorySnapshot.updatedAt) {
-      memorySnapshot = fromFile;
-    }
-    return memorySnapshot;
-  }
+  const merged = mergeSnapshots(fromFile, memorySnapshot);
 
-  if (memorySnapshot) return memorySnapshot;
+  if (merged) {
+    memorySnapshot = merged;
+    if (fromFile && isNewer(merged.updatedAt, fromFile.updatedAt)) {
+      try {
+        await writeToFile(merged);
+      } catch (error) {
+        console.warn("[kanban] failed to sync newer memory snapshot to file", error);
+      }
+    }
+    return merged;
+  }
 
   const seeded = seedSnapshot();
   await persistSnapshot(seeded);
@@ -71,6 +82,11 @@ export async function saveKanbanSnapshot(
   }
 
   const snapshot: KanbanSnapshot = { tasks, updatedAt: new Date().toISOString() };
-  await persistSnapshot(snapshot);
+  try {
+    await persistSnapshot(snapshot);
+  } catch (error) {
+    console.warn("[kanban] failed to persist snapshot", error);
+    throw error;
+  }
   return snapshot;
 }

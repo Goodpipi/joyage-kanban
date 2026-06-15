@@ -12,9 +12,10 @@ interface Props {
   setTasks: (updater: (prev: Task[]) => Task[]) => void;
   onSendToTodo: (id: string) => void;
   onOpenTask: (id: string) => void;
+  onDeleteTask: (id: string) => void;
 }
 
-export function BacklogPanel({ open, onOpenChange, tasks, setTasks, onSendToTodo, onOpenTask }: Props) {
+export function BacklogPanel({ open, onOpenChange, tasks, setTasks, onSendToTodo, onOpenTask, onDeleteTask }: Props) {
   const [filter, setFilter] = useState("");
 
   const visible = tasks.filter((t) => {
@@ -78,7 +79,7 @@ export function BacklogPanel({ open, onOpenChange, tasks, setTasks, onSendToTodo
               task={t}
               draggable={false}
               onOpen={onOpenTask}
-              onDelete={(id) => setTasks((prev) => prev.filter((x) => x.id !== id))}
+              onDelete={onDeleteTask}
               onChange={(nt) => setTasks((prev) => prev.map((x) => (x.id === nt.id ? nt : x)))}
               extraAction={
                 <button
