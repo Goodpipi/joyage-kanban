@@ -11,6 +11,7 @@ import {
   TAG_OPTIONS, avatarColor, collectImagesFromClipboard, fileToDataUrl, uid,
   type Task, type TagId, type TaskComment,
 } from "@/lib/kanban-types";
+import { ClickableImageThumbnail, ImagePreviewDialog } from "@/components/kanban/ImagePreviewDialog";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -25,6 +26,7 @@ export function TaskDetailDialog({ task, open, onOpenChange, onChange, currentUs
   const [draft, setDraft] = useState<Task | null>(task);
   const [commentText, setCommentText] = useState("");
   const [commentImages, setCommentImages] = useState<string[]>([]);
+  const [preview, setPreview] = useState<{ images: string[]; index: number } | null>(null);
   const descFileRef = useRef<HTMLInputElement>(null);
   const commentFileRef = useRef<HTMLInputElement>(null);
 
@@ -32,6 +34,7 @@ export function TaskDetailDialog({ task, open, onOpenChange, onChange, currentUs
     setDraft(task);
     setCommentText("");
     setCommentImages([]);
+    setPreview(null);
   }, [task?.id, open]);
 
   if (!draft) return null;
@@ -97,7 +100,10 @@ export function TaskDetailDialog({ task, open, onOpenChange, onChange, currentUs
   const removeDescImage = (i: number) =>
     update({ descriptionImages: (draft.descriptionImages || []).filter((_, ix) => ix !== i) });
 
+  const openPreview = (images: string[], index: number) => setPreview({ images, index });
+
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto border border-white/80 bg-white/95 p-0 shadow-[var(--shadow-pop)] backdrop-blur-2xl sm:rounded-2xl">
         <div className="p-6">
@@ -196,11 +202,16 @@ export function TaskDetailDialog({ task, open, onOpenChange, onChange, currentUs
             {(draft.descriptionImages?.length || 0) > 0 && (
               <div className="mt-2 grid grid-cols-3 gap-2">
                 {draft.descriptionImages!.map((src, i) => (
-                  <div key={i} className="group relative overflow-hidden rounded-lg ring-1 ring-border">
-                    <img src={src} alt="" className="aspect-video w-full object-cover" />
+                  <div key={i} className="group relative">
+                    <ClickableImageThumbnail
+                      src={src}
+                      className="aspect-video w-full object-cover"
+                      onPreview={() => openPreview(draft.descriptionImages!, i)}
+                    />
                     <button
-                      onClick={() => removeDescImage(i)}
-                      className="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white opacity-0 transition group-hover:opacity-100"
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); removeDescImage(i); }}
+                      className="absolute right-1 top-1 z-10 rounded-full bg-black/60 p-1 text-white opacity-0 transition group-hover:opacity-100"
                     >
                       <X className="h-3 w-3" />
                     </button>
@@ -241,7 +252,12 @@ export function TaskDetailDialog({ task, open, onOpenChange, onChange, currentUs
                   {c.images.length > 0 && (
                     <div className="mt-2 grid grid-cols-3 gap-2">
                       {c.images.map((src, i) => (
-                        <img key={i} src={src} alt="" className="aspect-video w-full rounded-lg object-cover ring-1 ring-border" />
+                        <ClickableImageThumbnail
+                          key={i}
+                          src={src}
+                          className="aspect-video w-full object-cover"
+                          onPreview={() => openPreview(c.images, i)}
+                        />
                       ))}
                     </div>
                   )}
@@ -262,11 +278,16 @@ export function TaskDetailDialog({ task, open, onOpenChange, onChange, currentUs
               {commentImages.length > 0 && (
                 <div className="mt-2 grid grid-cols-4 gap-2">
                   {commentImages.map((src, i) => (
-                    <div key={i} className="group relative overflow-hidden rounded-lg ring-1 ring-border">
-                      <img src={src} alt="" className="aspect-square w-full object-cover" />
+                    <div key={i} className="group relative">
+                      <ClickableImageThumbnail
+                        src={src}
+                        className="aspect-square w-full object-cover"
+                        onPreview={() => openPreview(commentImages, i)}
+                      />
                       <button
-                        onClick={() => setCommentImages((p) => p.filter((_, ix) => ix !== i))}
-                        className="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white opacity-0 transition group-hover:opacity-100"
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setCommentImages((p) => p.filter((_, ix) => ix !== i)); }}
+                        className="absolute right-1 top-1 z-10 rounded-full bg-black/60 p-1 text-white opacity-0 transition group-hover:opacity-100"
                       >
                         <X className="h-3 w-3" />
                       </button>
@@ -299,5 +320,14 @@ export function TaskDetailDialog({ task, open, onOpenChange, onChange, currentUs
         </div>
       </DialogContent>
     </Dialog>
+    <ImagePreviewDialog
+      images={preview?.images ?? []}
+      index={preview?.index ?? null}
+      onIndexChange={(index) => {
+        if (index === null) setPreview(null);
+        else if (preview) setPreview({ ...preview, index });
+      }}
+    />
+    </>
   );
 }
