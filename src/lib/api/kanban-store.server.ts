@@ -9,7 +9,10 @@ export interface KanbanSnapshot {
   updatedAt: string;
 }
 
-const DATA_FILE = path.join(process.cwd(), ".data", "kanban.json");
+const DATA_FILE = path.join(
+  process.env.DATA_DIR || path.join(process.cwd(), ".data"),
+  "kanban.json",
+);
 
 let memorySnapshot: KanbanSnapshot | null = null;
 
