@@ -30,11 +30,11 @@ export function KanbanColumn({ id, title, hint, tasks, onAdd, onOpenTask, onDele
     <div
       ref={setNodeRef}
       className={cn(
-        "glass-panel flex h-full flex-col rounded-2xl p-3 transition-all",
+        "glass-panel flex h-full min-h-0 flex-col rounded-2xl p-3 transition-all",
         isOver && "ring-2 ring-primary/50 ring-offset-2 ring-offset-transparent",
       )}
     >
-      <div className="mb-3 flex items-center justify-between px-1.5">
+      <div className="mb-3 flex shrink-0 items-center justify-between px-1.5">
         <div className="flex items-center gap-2">
           <span className={cn("h-2 w-2 rounded-full", accentByCol[id])} />
           <h3 className="text-sm font-semibold tracking-tight text-foreground">{title}</h3>
@@ -50,10 +50,10 @@ export function KanbanColumn({ id, title, hint, tasks, onAdd, onOpenTask, onDele
           <Plus className="h-4 w-4" />
         </button>
       </div>
-      <p className="mb-2 px-1.5 text-[11px] text-muted-foreground/70">{hint}</p>
+      <p className="mb-2 shrink-0 px-1.5 text-[11px] text-muted-foreground/70">{hint}</p>
 
       <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
-        <div className="flex flex-1 flex-col gap-2.5 overflow-y-auto pr-0.5">
+        <div className="kanban-column-scroll flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto overscroll-y-contain pr-1">
           {tasks.map((t) => (
             <TaskCard key={t.id} task={t} onOpen={onOpenTask} onDelete={onDeleteTask} onChange={onChangeTask} />
           ))}

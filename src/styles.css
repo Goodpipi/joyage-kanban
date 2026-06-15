@@ -104,3 +104,25 @@
   backdrop-filter: blur(20px) saturate(140%);
   border: 1px solid oklch(1 0 0 / 0.55);
 }
+
+.kanban-column-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: oklch(0.72 0.11 0 / 0.35) transparent;
+}
+
+.kanban-column-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.kanban-column-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.kanban-column-scroll::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: oklch(0.72 0.11 0 / 0.35);
+}
+
+.kanban-column-scroll::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.72 0.11 0 / 0.55);
+}

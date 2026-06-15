@@ -204,7 +204,7 @@ export function KanbanBoard() {
           onDragOver={onDragOver}
           onDragEnd={onDragEnd}
         >
-          <div className="grid h-full grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid h-full min-h-0 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
             {COLUMNS.map((c) => (
               <KanbanColumn
                 key={c.id}
