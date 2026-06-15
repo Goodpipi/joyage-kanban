@@ -4,9 +4,14 @@ services:
     runtime: node
     plan: free
     region: singapore
+    repo: https://github.com/Goodpipi/joyage-kanban
+    branch: main
     buildCommand: npm install && npm run build
     startCommand: npm start
     healthCheckPath: /
+    autoDeploy: true
     envVars:
       - key: NODE_VERSION
         value: 22.22.0
+      - key: NODE_ENV
+        value: production
