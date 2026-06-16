@@ -2,7 +2,7 @@ services:
   - type: web
     name: joyage-kanban
     runtime: node
-    plan: free
+    plan: starter
     region: singapore
     repo: https://github.com/Goodpipi/joyage-kanban
     branch: main
@@ -13,3 +13,9 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 22.22.0
+      - key: DATA_DIR
+        value: /var/data
+    disk:
+      name: kanban-data
+      mountPath: /var/data
+      sizeGB: 1

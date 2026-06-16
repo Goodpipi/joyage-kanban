@@ -18,6 +18,7 @@ import { TaskCard } from "@/components/kanban/TaskCard";
 import { BacklogPanel } from "@/components/kanban/BacklogPanel";
 import { TaskDetailDialog } from "@/components/kanban/TaskDetailDialog";
 import { Login } from "@/components/kanban/Login";
+import { KanbanBackupControls } from "@/components/kanban/KanbanBackupControls";
 import { useKanbanSync } from "@/hooks/use-kanban-sync";
 import { LOGO_URL } from "@/lib/logo";
 
@@ -30,7 +31,7 @@ function readStoredUser(): string | null {
 
 export function KanbanBoard() {
   const [user, setUser] = useState<string | null>(readStoredUser);
-  const { tasks, setTasks, ready, syncError } = useKanbanSync(!!user);
+  const { tasks, setTasks, ready, syncError, refresh } = useKanbanSync(!!user);
 
   const login = (name: string) => {
     localStorage.setItem(USER_KEY, name);
@@ -177,6 +178,7 @@ export function KanbanBoard() {
           </div>
         </div>
         {syncError && <p className="text-xs text-destructive">{syncError}</p>}
+        <KanbanBackupControls onImported={() => void refresh()} />
 
         <div className="glass-panel flex items-center rounded-2xl px-4 py-2.5">
           <div className="glass-soft flex w-full items-center gap-2 rounded-full px-3 py-1.5">

@@ -42,7 +42,7 @@ export function TaskCard({ task, onOpen, onDelete, onChange, draggable = true, e
       style={style}
       onClick={() => onOpen(task.id)}
       className={cn(
-        "glass-card group relative cursor-pointer rounded-xl p-3.5 transition-all hover:-translate-y-0.5 hover:shadow-[var(--shadow-pop)]",
+        "glass-card group relative cursor-pointer rounded-xl p-3.5 transition-[transform,box-shadow] duration-300 ease-out hover:-translate-y-1 hover:shadow-[var(--shadow-card-hover)]",
         isDragging && "opacity-50 shadow-none",
       )}
     >

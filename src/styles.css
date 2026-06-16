@@ -36,7 +36,7 @@
 
 :root {
   --radius: 0.875rem;
-  --background: oklch(0.985 0.005 340);
+  --background: oklch(0.985 0.015 350);
   --foreground: oklch(0.2 0.02 320);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.2 0.02 320);
@@ -60,17 +60,21 @@
   --glass: oklch(1 0 0 / 0.55);
   --glass-border: oklch(1 0 0 / 0.7);
 
-  --gradient-bg: radial-gradient(1200px 600px at 10% -10%, oklch(0.92 0.06 0 / 0.6), transparent 60%),
-                 radial-gradient(900px 500px at 110% 10%, oklch(0.9 0.05 340 / 0.5), transparent 60%),
-                 radial-gradient(800px 600px at 50% 110%, oklch(0.93 0.04 20 / 0.5), transparent 60%),
-                 linear-gradient(180deg, oklch(0.99 0.003 340), oklch(0.97 0.008 340));
+  --gradient-bg: radial-gradient(1200px 600px at 10% -10%, oklch(0.92 0.07 5 / 0.42), transparent 65%),
+                 radial-gradient(900px 500px at 110% 10%, oklch(0.93 0.06 350 / 0.36), transparent 65%),
+                 radial-gradient(800px 600px at 50% 110%, oklch(0.94 0.05 15 / 0.32), transparent 65%),
+                 linear-gradient(180deg, oklch(0.99 0.018 350), oklch(0.96 0.032 5));
 
   --shadow-glass: 0 1px 0 0 oklch(1 0 0 / 0.8) inset,
                   0 8px 24px -8px oklch(0.5 0.05 340 / 0.18),
                   0 2px 6px -2px oklch(0.5 0.05 340 / 0.08);
-  --shadow-card: 0 1px 0 0 oklch(1 0 0 / 0.9) inset,
-                 0 6px 16px -8px oklch(0.5 0.05 340 / 0.18),
-                 0 2px 4px -2px oklch(0.5 0.05 340 / 0.06);
+  --shadow-card: 0 1px 0 0 oklch(1 0 0 / 0.75) inset,
+                 0 1px 3px 0 oklch(0.58 0.05 350 / 0.07),
+                 0 2px 6px -1px oklch(0.58 0.05 350 / 0.06),
+                 0 8px 22px -4px oklch(0.58 0.05 350 / 0.11);
+  --shadow-card-hover: 0 1px 0 0 oklch(1 0 0 / 0.85) inset,
+                       0 4px 14px -2px oklch(0.58 0.05 350 / 0.12),
+                       0 14px 32px -6px oklch(0.58 0.05 350 / 0.14);
   --shadow-pop: 0 20px 50px -20px oklch(0.5 0.05 340 / 0.35);
 }
 
@@ -93,9 +97,9 @@
 }
 
 @utility glass-card {
-  background: oklch(1 0 0 / 0.75);
-  backdrop-filter: blur(16px) saturate(150%);
-  border: 1px solid oklch(1 0 0 / 0.8);
+  background: oklch(0.995 0.006 350 / 0.94);
+  backdrop-filter: blur(18px) saturate(160%);
+  border: 1px solid oklch(1 0 0 / 0.78);
   box-shadow: var(--shadow-card);
 }
 
