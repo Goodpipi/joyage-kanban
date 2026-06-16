@@ -115,6 +115,7 @@ export function TaskDetailDialog({ task, open, onOpenChange, onChange, currentUs
               className="h-auto border-0 bg-transparent p-0 text-xl font-bold tracking-tight shadow-none focus-visible:ring-0"
             />
           </DialogTitle>
+          <p className="mt-1 font-mono text-xs font-semibold tracking-wide text-primary">{draft.code}</p>
 
           {/* Meta row */}
           <div className="mt-4 grid grid-cols-2 gap-3 text-sm">

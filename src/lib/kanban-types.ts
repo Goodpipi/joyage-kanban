@@ -1,5 +1,7 @@
 export type ColumnId = "todo" | "in-progress" | "testing" | "done";
 export type TagId = "dev" | "other";
+export type TaskColumn = ColumnId | "backlog" | "archived";
+export type ActiveColumn = ColumnId | "backlog";
 
 export interface TaskComment {
   id: string;
@@ -11,6 +13,7 @@ export interface TaskComment {
 
 export interface Task {
   id: string;
+  code: string;
   title: string;
   description: string;
   descriptionImages?: string[]; // data URLs pasted/uploaded in description
@@ -18,7 +21,8 @@ export interface Task {
   assignee: string;
   tags?: TagId[];
   comments?: TaskComment[];
-  column: ColumnId | "backlog";
+  column: TaskColumn;
+  archivedFrom?: ActiveColumn;
 }
 
 export const COLUMNS: { id: ColumnId; title: string; hint: string }[] = [
@@ -34,6 +38,53 @@ export const TAG_OPTIONS: { id: TagId; label: string; className: string }[] = [
 ];
 
 export const uid = () => Math.random().toString(36).slice(2, 10);
+
+const TASK_CODE_RE = /^JG-(\d+)$/i;
+
+export function nextTaskCode(tasks: Pick<Task, "code">[]): string {
+  let maxNum = 0;
+  for (const t of tasks) {
+    const m = t.code?.match(TASK_CODE_RE);
+    if (m) maxNum = Math.max(maxNum, Number.parseInt(m[1], 10));
+  }
+  return `JG-${String(maxNum + 1).padStart(4, "0")}`;
+}
+
+export function ensureTaskCodes(tasks: Array<Omit<Task, "code"> & { code?: string }>): { tasks: Task[]; changed: boolean } {
+  const used = new Set<string>();
+  let maxNum = 0;
+
+  for (const t of tasks) {
+    const m = t.code?.match(TASK_CODE_RE);
+    if (m) maxNum = Math.max(maxNum, Number.parseInt(m[1], 10));
+  }
+
+  let next = maxNum + 1;
+  let changed = false;
+
+  const normalized = tasks.map((t) => {
+    const m = t.code?.match(TASK_CODE_RE);
+    if (m) {
+      const code = `JG-${m[1].padStart(4, "0")}`;
+      if (used.has(code)) {
+        changed = true;
+      } else {
+        used.add(code);
+        if (code !== t.code) changed = true;
+        return { ...t, code };
+      }
+    }
+    changed = true;
+    let code: string;
+    do {
+      code = `JG-${String(next++).padStart(4, "0")}`;
+    } while (used.has(code));
+    used.add(code);
+    return { ...t, code };
+  });
+
+  return { tasks: normalized, changed };
+}
 
 // Macaron palette for assignee avatars (pastel, harmonious with primary #DF8BA4)
 const AVATAR_PALETTE = [

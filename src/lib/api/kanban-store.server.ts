@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { KANBAN_SEED } from "@/lib/kanban-seed";
-import type { Task } from "@/lib/kanban-types";
+import { ensureTaskCodes, type Task } from "@/lib/kanban-types";
 import {
   isDatabaseStorageEnabled,
   readFromDatabase,
@@ -65,13 +65,17 @@ export function getKanbanStorageMode(): KanbanStorageMode {
   return "file";
 }
 
-export function getKanbanStorageInfoDetails() {
-  return {
-    mode: getKanbanStorageMode(),
-    dataDir: process.env.DATA_DIR ?? null,
-    dataFile: DATA_FILE,
-    persistent: getKanbanStorageMode() !== "file",
-  };
+async function normalizeSnapshot(snapshot: KanbanSnapshot): Promise<KanbanSnapshot> {
+  const { tasks, changed } = ensureTaskCodes(snapshot.tasks);
+  if (!changed) return snapshot;
+  const migrated: KanbanSnapshot = { tasks, updatedAt: new Date().toISOString() };
+  memorySnapshot = migrated;
+  try {
+    await persistSnapshot(migrated);
+  } catch (error) {
+    console.warn("[kanban] failed to persist migrated task codes", error);
+  }
+  return migrated;
 }
 
 async function persistSnapshot(snapshot: KanbanSnapshot): Promise<void> {
@@ -128,8 +132,10 @@ async function loadFromDatabaseStorage(): Promise<KanbanSnapshot> {
 }
 
 export async function loadKanbanSnapshot(): Promise<KanbanSnapshot> {
-  if (isDatabaseStorageEnabled()) return await loadFromDatabaseStorage();
-  return await loadFromFileStorage();
+  const snapshot = isDatabaseStorageEnabled()
+    ? await loadFromDatabaseStorage()
+    : await loadFromFileStorage();
+  return await normalizeSnapshot(snapshot);
 }
 
 export async function saveKanbanSnapshot(
@@ -141,18 +147,15 @@ export async function saveKanbanSnapshot(
     return { conflict: true, snapshot: current };
   }
 
-  const snapshot: KanbanSnapshot = { tasks, updatedAt: new Date().toISOString() };
+  const snapshot: KanbanSnapshot = {
+    tasks: ensureTaskCodes(tasks).tasks,
+    updatedAt: new Date().toISOString(),
+  };
   try {
     await persistSnapshot(snapshot);
   } catch (error) {
     console.warn("[kanban] failed to persist snapshot", error);
     throw error;
   }
-  return snapshot;
-}
-
-export async function importKanbanSnapshot(tasks: Task[]): Promise<KanbanSnapshot> {
-  const snapshot: KanbanSnapshot = { tasks, updatedAt: new Date().toISOString() };
-  await persistSnapshot(snapshot);
   return snapshot;
 }

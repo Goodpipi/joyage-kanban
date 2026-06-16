@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowRight, Plus, X } from "lucide-react";
+import { ArchiveRestore, X } from "lucide-react";
 import type { Task } from "@/lib/kanban-types";
 import { TaskCard } from "./TaskCard";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
@@ -8,15 +8,21 @@ interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   tasks: Task[];
-  setTasks: (updater: (prev: Task[]) => Task[]) => void;
-  onAdd: () => void;
-  onSendToTodo: (id: string) => void;
   onOpenTask: (id: string) => void;
   onDeleteTask: (id: string) => void;
-  onArchiveTask: (id: string) => void;
+  onRestoreTask: (id: string) => void;
+  onChangeTask: (t: Task) => void;
 }
 
-export function BacklogPanel({ open, onOpenChange, tasks, setTasks, onAdd, onSendToTodo, onOpenTask, onDeleteTask, onArchiveTask }: Props) {
+export function ArchivedPanel({
+  open,
+  onOpenChange,
+  tasks,
+  onOpenTask,
+  onDeleteTask,
+  onRestoreTask,
+  onChangeTask,
+}: Props) {
   const [filter, setFilter] = useState("");
 
   const visible = tasks.filter((t) => {
@@ -30,8 +36,6 @@ export function BacklogPanel({ open, onOpenChange, tasks, setTasks, onAdd, onSen
     );
   });
 
-  const add = () => onAdd();
-
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
@@ -39,8 +43,8 @@ export function BacklogPanel({ open, onOpenChange, tasks, setTasks, onAdd, onSen
         className="w-full border-l border-white/70 bg-white/95 shadow-[var(--shadow-pop)] backdrop-blur-2xl sm:max-w-md"
       >
         <SheetHeader className="space-y-1">
-          <SheetTitle className="text-xl font-bold tracking-tight">Backlog</SheetTitle>
-          <SheetDescription>Park ideas here, then send them to To Do when ready.</SheetDescription>
+          <SheetTitle className="text-xl font-bold tracking-tight">已归档</SheetTitle>
+          <SheetDescription>已归档的任务不会出现在看板列中，可随时恢复。</SheetDescription>
         </SheetHeader>
 
         <div className="mt-4 flex items-center gap-2">
@@ -48,7 +52,7 @@ export function BacklogPanel({ open, onOpenChange, tasks, setTasks, onAdd, onSen
             <input
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
-              placeholder="Filter code, title, description, assignee…"
+              placeholder="搜索编码、标题、描述、责任人…"
               className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground/70"
             />
             {filter && (
@@ -57,18 +61,12 @@ export function BacklogPanel({ open, onOpenChange, tasks, setTasks, onAdd, onSen
               </button>
             )}
           </div>
-          <button
-            onClick={add}
-            className="flex items-center gap-1 rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm transition hover:opacity-90"
-          >
-            <Plus className="h-3.5 w-3.5" /> Add
-          </button>
         </div>
 
         <div className="mt-4 flex flex-col gap-2.5 overflow-y-auto pb-6" style={{ maxHeight: "calc(100vh - 180px)" }}>
           {visible.length === 0 && (
             <div className="glass-soft rounded-xl px-4 py-10 text-center text-sm text-muted-foreground">
-              No items in backlog.
+              暂无已归档任务。
             </div>
           )}
           {visible.map((t) => (
@@ -76,17 +74,18 @@ export function BacklogPanel({ open, onOpenChange, tasks, setTasks, onAdd, onSen
               key={t.id}
               task={t}
               draggable={false}
+              menuMode="archived"
               onOpen={onOpenTask}
               onDelete={onDeleteTask}
-              onArchive={onArchiveTask}
-              onChange={(nt) => setTasks((prev) => prev.map((x) => (x.id === nt.id ? nt : x)))}
+              onRestore={onRestoreTask}
+              onChange={onChangeTask}
               extraAction={
                 <button
-                  onClick={(e) => { e.stopPropagation(); onSendToTodo(t.id); }}
-                  title="Send to To Do"
+                  onClick={(e) => { e.stopPropagation(); onRestoreTask(t.id); }}
+                  title="恢复任务"
                   className="flex items-center gap-1 rounded-full bg-primary-soft px-2 py-1 text-[10px] font-semibold text-primary hover:bg-primary hover:text-primary-foreground"
                 >
-                  To Do <ArrowRight className="h-3 w-3" />
+                  恢复 <ArchiveRestore className="h-3 w-3" />
                 </button>
               }
             />

@@ -1,15 +1,11 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-import {
-  getKanbanStorageInfoDetails,
-  importKanbanSnapshot,
-  loadKanbanSnapshot,
-  saveKanbanSnapshot,
-} from "@/lib/api/kanban-store.server";
+import { loadKanbanSnapshot, saveKanbanSnapshot } from "@/lib/api/kanban-store.server";
 
 const tagIdSchema = z.enum(["dev", "other"]);
-const columnIdSchema = z.enum(["todo", "in-progress", "testing", "done", "backlog"]);
+const columnIdSchema = z.enum(["todo", "in-progress", "testing", "done", "backlog", "archived"]);
+const activeColumnSchema = z.enum(["todo", "in-progress", "testing", "done", "backlog"]);
 
 const taskCommentSchema = z.object({
   id: z.string(),
@@ -21,6 +17,7 @@ const taskCommentSchema = z.object({
 
 const taskSchema = z.object({
   id: z.string(),
+  code: z.string().optional(),
   title: z.string(),
   description: z.string(),
   descriptionImages: z.array(z.string()).optional(),
@@ -29,19 +26,11 @@ const taskSchema = z.object({
   tags: z.array(tagIdSchema).optional(),
   comments: z.array(taskCommentSchema).optional(),
   column: columnIdSchema,
-});
-
-const snapshotSchema = z.object({
-  tasks: z.array(taskSchema),
-  updatedAt: z.string().optional(),
+  archivedFrom: activeColumnSchema.optional(),
 });
 
 export const getKanbanSnapshot = createServerFn({ method: "POST" }).handler(async () => {
   return await loadKanbanSnapshot();
-});
-
-export const getKanbanStorageInfo = createServerFn({ method: "POST" }).handler(async () => {
-  return getKanbanStorageInfoDetails();
 });
 
 export const saveKanbanSnapshotFn = createServerFn({ method: "POST" })
@@ -53,10 +42,4 @@ export const saveKanbanSnapshotFn = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     return await saveKanbanSnapshot(data.tasks, data.expectedUpdatedAt);
-  });
-
-export const importKanbanSnapshotFn = createServerFn({ method: "POST" })
-  .validator(snapshotSchema)
-  .handler(async ({ data }) => {
-    return await importKanbanSnapshot(data.tasks);
   });

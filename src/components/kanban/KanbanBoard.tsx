@@ -11,14 +11,14 @@ import {
   type DragOverEvent,
 } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
-import { Inbox, LogOut, Search, X } from "lucide-react";
-import { COLUMNS, avatarColor, uid, type ColumnId, type Task } from "@/lib/kanban-types";
+import { Archive, Inbox, LogOut, Search, X } from "lucide-react";
+import { COLUMNS, avatarColor, nextTaskCode, uid, type ActiveColumn, type ColumnId, type Task } from "@/lib/kanban-types";
 import { KanbanColumn } from "@/components/kanban/KanbanColumn";
 import { TaskCard } from "@/components/kanban/TaskCard";
 import { BacklogPanel } from "@/components/kanban/BacklogPanel";
+import { ArchivedPanel } from "@/components/kanban/ArchivedPanel";
 import { TaskDetailDialog } from "@/components/kanban/TaskDetailDialog";
 import { Login } from "@/components/kanban/Login";
-import { KanbanBackupControls } from "@/components/kanban/KanbanBackupControls";
 import { useKanbanSync } from "@/hooks/use-kanban-sync";
 import { LOGO_URL } from "@/lib/logo";
 
@@ -31,7 +31,7 @@ function readStoredUser(): string | null {
 
 export function KanbanBoard() {
   const [user, setUser] = useState<string | null>(readStoredUser);
-  const { tasks, setTasks, ready, syncError, refresh } = useKanbanSync(!!user);
+  const { tasks, setTasks, ready, syncError } = useKanbanSync(!!user);
 
   const login = (name: string) => {
     localStorage.setItem(USER_KEY, name);
@@ -44,6 +44,7 @@ export function KanbanBoard() {
 
   const [filter, setFilter] = useState("");
   const [showBacklog, setShowBacklog] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
 
@@ -53,6 +54,7 @@ export function KanbanBoard() {
     if (!filter.trim()) return true;
     const q = filter.toLowerCase();
     return (
+      (t.code?.toLowerCase() ?? "").includes(q) ||
       t.title.toLowerCase().includes(q) ||
       t.description.toLowerCase().includes(q) ||
       t.assignee.toLowerCase().includes(q)
@@ -62,22 +64,53 @@ export function KanbanBoard() {
   const byColumn = useMemo(() => {
     const map: Record<ColumnId, Task[]> = { todo: [], "in-progress": [], testing: [], done: [] };
     for (const t of tasks) {
-      if (t.column !== "backlog" && matches(t)) map[t.column].push(t);
+      if (t.column !== "backlog" && t.column !== "archived" && matches(t)) map[t.column].push(t);
     }
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tasks, filter]);
 
   const backlog = tasks.filter((t) => t.column === "backlog");
+  const archived = tasks.filter((t) => t.column === "archived");
   const activeTask = tasks.find((t) => t.id === activeId) || null;
 
   const updateTask = (nt: Task) => setTasks((p) => p.map((x) => (x.id === nt.id ? nt : x)));
   const deleteTask = (id: string) =>
     setTasks((p) => p.filter((x) => x.id !== id), { immediate: true });
 
+  const archiveTask = (id: string) =>
+    setTasks((p) =>
+      p.map((t) => {
+        if (t.id !== id || t.column === "archived") return t;
+        const from: ActiveColumn = t.column === "backlog" ? "backlog" : t.column;
+        return { ...t, archivedFrom: from, column: "archived" as const };
+      }),
+    );
+
+  const restoreTask = (id: string) =>
+    setTasks((p) =>
+      p.map((t) => {
+        if (t.id !== id || t.column !== "archived") return t;
+        const { archivedFrom, ...rest } = t;
+        return { ...rest, column: archivedFrom ?? "todo" };
+      }),
+    );
+
   const addToColumn = (col: ColumnId) => {
     const id = uid();
-    setTasks((p) => [...p, { id, title: "", description: "", assignee: user || "", column: col }]);
+    setTasks((p) => [
+      ...p,
+      { id, code: nextTaskCode(p), title: "", description: "", assignee: user || "", column: col },
+    ]);
+    setOpenTaskId(id);
+  };
+
+  const addToBacklog = () => {
+    const id = uid();
+    setTasks((p) => [
+      { id, code: nextTaskCode(p), title: "", description: "", assignee: user || "", column: "backlog" },
+      ...p,
+    ]);
     setOpenTaskId(id);
   };
 
@@ -86,7 +119,7 @@ export function KanbanBoard() {
 
   const findContainer = (id: string): ColumnId | null => {
     const t = tasks.find((x) => x.id === id);
-    if (t && t.column !== "backlog") return t.column;
+    if (t && t.column !== "backlog" && t.column !== "archived") return t.column;
     if (["todo", "in-progress", "testing", "done"].includes(id)) return id as ColumnId;
     return null;
   };
@@ -152,6 +185,13 @@ export function KanbanBoard() {
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <button
+              onClick={() => setShowArchived(true)}
+              className="flex items-center gap-1.5 rounded-full border border-primary/25 bg-white/70 px-4 py-2 text-sm font-semibold text-primary shadow-sm transition hover:bg-primary-soft"
+            >
+              <Archive className="h-4 w-4" /> 已归档
+              <span className="ml-1 rounded-full bg-primary/10 px-1.5 text-[11px]">{archived.length}</span>
+            </button>
+            <button
               onClick={() => setShowBacklog(true)}
               className="flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-[0_8px_20px_-8px_oklch(0.72_0.11_0/0.7)] transition hover:opacity-90"
             >
@@ -178,7 +218,6 @@ export function KanbanBoard() {
           </div>
         </div>
         {syncError && <p className="text-xs text-destructive">{syncError}</p>}
-        <KanbanBackupControls onImported={() => void refresh()} />
 
         <div className="glass-panel flex items-center rounded-2xl px-4 py-2.5">
           <div className="glass-soft flex w-full items-center gap-2 rounded-full px-3 py-1.5">
@@ -186,7 +225,7 @@ export function KanbanBoard() {
             <input
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
-              placeholder="搜索标题、描述、责任人…"
+              placeholder="搜索编码、标题、描述、责任人…"
               className="min-w-0 flex-1 bg-transparent text-left text-sm outline-none placeholder:text-muted-foreground/70"
             />
             {filter && (
@@ -218,6 +257,7 @@ export function KanbanBoard() {
                 onAdd={() => addToColumn(c.id)}
                 onOpenTask={setOpenTaskId}
                 onDeleteTask={deleteTask}
+                onArchiveTask={archiveTask}
                 onChangeTask={updateTask}
               />
             ))}
@@ -225,7 +265,7 @@ export function KanbanBoard() {
           <DragOverlay>
             {activeTask && (
               <div className="rotate-1">
-                <TaskCard task={activeTask} onOpen={() => {}} onDelete={() => {}} draggable={false} />
+                <TaskCard task={activeTask} onOpen={() => {}} onDelete={() => {}} menuMode="none" draggable={false} />
               </div>
             )}
           </DragOverlay>
@@ -241,9 +281,21 @@ export function KanbanBoard() {
           const next = updater(prev.filter((t) => t.column === "backlog")).map((t) => ({ ...t, column: "backlog" as const }));
           return [...others, ...next];
         })}
+        onAdd={addToBacklog}
         onSendToTodo={sendToTodo}
         onOpenTask={setOpenTaskId}
         onDeleteTask={deleteTask}
+        onArchiveTask={archiveTask}
+      />
+
+      <ArchivedPanel
+        open={showArchived}
+        onOpenChange={setShowArchived}
+        tasks={archived}
+        onOpenTask={setOpenTaskId}
+        onDeleteTask={deleteTask}
+        onRestoreTask={restoreTask}
+        onChangeTask={updateTask}
       />
 
       <TaskDetailDialog

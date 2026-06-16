@@ -1,21 +1,49 @@
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
-import { Calendar as CalendarIcon, Trash2, GripVertical, MessageSquare, Paperclip } from "lucide-react";
+import {
+  Archive,
+  ArchiveRestore,
+  Calendar as CalendarIcon,
+  GripVertical,
+  MessageSquare,
+  MoreHorizontal,
+  Paperclip,
+  Trash2,
+} from "lucide-react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { TAG_OPTIONS, avatarColor, type Task } from "@/lib/kanban-types";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
 interface Props {
   task: Task;
   onOpen: (id: string) => void;
   onDelete: (id: string) => void;
+  onArchive?: (id: string) => void;
+  onRestore?: (id: string) => void;
   onChange?: (task: Task) => void;
   draggable?: boolean;
+  menuMode?: "board" | "archived" | "none";
   extraAction?: React.ReactNode;
 }
 
-export function TaskCard({ task, onOpen, onDelete, onChange, draggable = true, extraAction }: Props) {
+export function TaskCard({
+  task,
+  onOpen,
+  onDelete,
+  onArchive,
+  onRestore,
+  onChange,
+  draggable = true,
+  menuMode = "board",
+  extraAction,
+}: Props) {
   const sortable = useSortable({ id: task.id, disabled: !draggable });
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = sortable;
   const [editing, setEditing] = useState(false);
@@ -35,6 +63,7 @@ export function TaskCard({ task, onOpen, onDelete, onChange, draggable = true, e
   const tags = (task.tags || []).map((id) => TAG_OPTIONS.find((t) => t.id === id)).filter(Boolean) as typeof TAG_OPTIONS;
   const commentCount = task.comments?.length || 0;
   const imageCount = (task.descriptionImages?.length || 0) + (task.comments?.reduce((s, c) => s + c.images.length, 0) || 0);
+  const showMenu = menuMode !== "none";
 
   return (
     <div
@@ -46,49 +75,94 @@ export function TaskCard({ task, onOpen, onDelete, onChange, draggable = true, e
         isDragging && "opacity-50 shadow-none",
       )}
     >
-      <div className="flex items-start gap-2">
+      <div className="absolute right-2 top-2 flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
         {draggable && (
           <button
             {...attributes}
             {...listeners}
-            onClick={(e) => e.stopPropagation()}
-            className="-ml-1 mt-0.5 cursor-grab rounded p-0.5 text-muted-foreground/50 opacity-0 transition group-hover:opacity-100 active:cursor-grabbing"
-            aria-label="Drag"
+            className="cursor-grab rounded-md p-1 text-muted-foreground/50 opacity-0 transition hover:bg-primary-soft hover:text-primary group-hover:opacity-100 active:cursor-grabbing"
+            aria-label="拖拽"
           >
             <GripVertical className="h-4 w-4" />
           </button>
         )}
-        <div className="min-w-0 flex-1" onClick={(e) => { if (editing) e.stopPropagation(); }}>
-          {editing ? (
-            <input
-              autoFocus
-              value={titleDraft}
-              onChange={(e) => setTitleDraft(e.target.value)}
-              onBlur={commitTitle}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") { e.preventDefault(); commitTitle(); }
-                if (e.key === "Escape") { setTitleDraft(task.title); setEditing(false); }
-              }}
-              onClick={(e) => e.stopPropagation()}
-              className="w-full rounded-md bg-white/80 px-1.5 py-0.5 text-sm font-semibold leading-snug text-foreground outline-none ring-1 ring-primary/40"
-            />
-          ) : (
-            <h4
-              className="truncate text-sm font-semibold leading-snug text-foreground hover:text-primary"
-              onClick={(e) => { if (onChange) { e.stopPropagation(); setEditing(true); } }}
-              title={onChange ? "Click to edit" : undefined}
-            >
-              {task.title || <span className="text-muted-foreground/60">Untitled</span>}
-            </h4>
-          )}
-        </div>
-        <button
-          onClick={(e) => { e.stopPropagation(); onDelete(task.id); }}
-          className="rounded-md p-1 text-muted-foreground/60 opacity-0 transition hover:bg-primary-soft hover:text-primary group-hover:opacity-100"
-          aria-label="Delete"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
+        {showMenu && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="rounded-md p-1 text-muted-foreground/60 opacity-0 transition hover:bg-primary-soft hover:text-primary group-hover:opacity-100 data-[state=open]:opacity-100"
+                aria-label="更多操作"
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-[8.5rem]">
+              {menuMode === "archived" ? (
+                <>
+                  <DropdownMenuItem
+                    onClick={() => onRestore?.(task.id)}
+                    className="gap-2"
+                  >
+                    <ArchiveRestore className="h-4 w-4" />
+                    恢复任务
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => onDelete(task.id)}
+                    className="gap-2 text-destructive focus:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    删除任务
+                  </DropdownMenuItem>
+                </>
+              ) : (
+                <>
+                  <DropdownMenuItem
+                    onClick={() => onArchive?.(task.id)}
+                    className="gap-2"
+                  >
+                    <Archive className="h-4 w-4" />
+                    归档任务
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => onDelete(task.id)}
+                    className="gap-2 text-destructive focus:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    删除任务
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
+
+      <div className={cn("min-w-0 pr-14", showMenu || draggable ? "" : "pr-0")} onClick={(e) => { if (editing) e.stopPropagation(); }}>
+        <span className="mb-1 inline-block rounded-md bg-primary-soft px-1.5 py-0.5 font-mono text-[10px] font-semibold tracking-wide text-primary">
+          {task.code}
+        </span>
+        {editing ? (
+          <input
+            autoFocus
+            value={titleDraft}
+            onChange={(e) => setTitleDraft(e.target.value)}
+            onBlur={commitTitle}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); commitTitle(); }
+              if (e.key === "Escape") { setTitleDraft(task.title); setEditing(false); }
+            }}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full rounded-md bg-white/80 px-1.5 py-0.5 text-sm font-semibold leading-snug text-foreground outline-none ring-1 ring-primary/40"
+          />
+        ) : (
+          <h4
+            className="truncate text-sm font-semibold leading-snug text-foreground hover:text-primary"
+            onClick={(e) => { if (onChange) { e.stopPropagation(); setEditing(true); } }}
+            title={onChange ? "Click to edit" : undefined}
+          >
+            {task.title || <span className="text-muted-foreground/60">Untitled</span>}
+          </h4>
+        )}
       </div>
 
       {task.description && (

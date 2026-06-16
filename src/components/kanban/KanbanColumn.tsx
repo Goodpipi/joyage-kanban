@@ -13,6 +13,7 @@ interface Props {
   onAdd: () => void;
   onOpenTask: (id: string) => void;
   onDeleteTask: (id: string) => void;
+  onArchiveTask: (id: string) => void;
   onChangeTask: (t: Task) => void;
 }
 
@@ -23,7 +24,7 @@ const accentByCol: Record<ColumnId, string> = {
   done: "bg-emerald-400",
 };
 
-export function KanbanColumn({ id, title, hint, tasks, onAdd, onOpenTask, onDeleteTask, onChangeTask }: Props) {
+export function KanbanColumn({ id, title, hint, tasks, onAdd, onOpenTask, onDeleteTask, onArchiveTask, onChangeTask }: Props) {
   const { setNodeRef, isOver } = useDroppable({ id });
 
   return (
@@ -55,7 +56,14 @@ export function KanbanColumn({ id, title, hint, tasks, onAdd, onOpenTask, onDele
       <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
         <div className="kanban-column-scroll flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto overscroll-y-contain pr-1">
           {tasks.map((t) => (
-            <TaskCard key={t.id} task={t} onOpen={onOpenTask} onDelete={onDeleteTask} onChange={onChangeTask} />
+            <TaskCard
+              key={t.id}
+              task={t}
+              onOpen={onOpenTask}
+              onDelete={onDeleteTask}
+              onArchive={onArchiveTask}
+              onChange={onChangeTask}
+            />
           ))}
           <button
             onClick={onAdd}
