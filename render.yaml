@@ -13,8 +13,12 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 22.22.0
+      - key: NODE_OPTIONS
+        value: --max-old-space-size=384
       - key: DATA_DIR
         value: /var/data
+      - key: KANBAN_HISTORY_MAX
+        value: "100"
     disk:
       name: kanban-data
       mountPath: /var/data

@@ -31,15 +31,18 @@ const HISTORY_DIR = path.join(DATA_DIR, "history");
 const DAILY_DIR = path.join(HISTORY_DIR, "daily");
 const DEPLOY_DIR = path.join(HISTORY_DIR, "deploy");
 
-const MAX_HISTORY_FILES = Number(process.env.KANBAN_HISTORY_MAX ?? 500);
+const MAX_HISTORY_FILES = Number(process.env.KANBAN_HISTORY_MAX ?? 100);
 const AUTO_SNAPSHOT_MS = Number(process.env.KANBAN_AUTO_SNAPSHOT_MS ?? 60 * 60 * 1000);
 const MAX_DAILY_FILES = Number(process.env.KANBAN_DAILY_MAX ?? 90);
 const MAX_DEPLOY_FILES = Number(process.env.KANBAN_DEPLOY_MAX ?? 60);
+const SAVE_HISTORY_THROTTLE_MS = Number(process.env.KANBAN_SAVE_HISTORY_MS ?? 5 * 60 * 1000);
 
 let memorySnapshot: KanbanSnapshot | null = null;
 let autoHistoryStarted = false;
 let deployBackupDone = false;
 let lastAutoSnapshotAt = 0;
+let lastSaveHistoryAt = 0;
+let persistChain: Promise<void> = Promise.resolve();
 
 function isNewer(a: string, b: string): boolean {
   return a > b;
@@ -126,7 +129,21 @@ async function pruneDir(files: string[], max: number): Promise<void> {
 
 async function writeSnapshotFile(file: string, snapshot: KanbanSnapshot): Promise<void> {
   await fs.mkdir(path.dirname(file), { recursive: true });
-  await fs.writeFile(file, JSON.stringify(snapshot, null, 2), "utf-8");
+  await fs.writeFile(file, JSON.stringify(snapshot), "utf-8");
+}
+
+function enqueuePersist(work: () => Promise<void>): Promise<void> {
+  persistChain = persistChain.then(work).catch((error) => {
+    console.warn("[kanban] persist queue error", error);
+  });
+  return persistChain;
+}
+
+async function maybeAppendSaveHistory(snapshot: KanbanSnapshot): Promise<void> {
+  const now = Date.now();
+  if (now - lastSaveHistoryAt < SAVE_HISTORY_THROTTLE_MS) return;
+  lastSaveHistoryAt = now;
+  await appendHistorySnapshot(snapshot, "save");
 }
 
 async function appendHistorySnapshot(snapshot: KanbanSnapshot, tag = "save"): Promise<void> {
@@ -149,8 +166,8 @@ async function appendDeploySnapshot(snapshot: KanbanSnapshot): Promise<void> {
   if (snapshot.tasks.length === 0) return;
 
   const files = await listDeployFiles();
-  for (const file of files) {
-    const existing = await readSnapshotFile(file);
+  if (files.length > 0) {
+    const existing = await readSnapshotFile(files[0]);
     if (existing && snapshotSignature(existing) === snapshotSignature(snapshot)) return;
   }
 
@@ -372,18 +389,12 @@ async function readFromFile(): Promise<KanbanSnapshot | null> {
 
 async function writeToFile(snapshot: KanbanSnapshot): Promise<void> {
   await fs.mkdir(DATA_DIR, { recursive: true });
-
-  const currentMain = await readSnapshotFile(DATA_FILE);
-  if (currentMain && currentMain.tasks.length > 0) {
-    await appendHistorySnapshot(currentMain, "before-save");
-  }
-
-  const payload = JSON.stringify(snapshot, null, 2);
+  const payload = JSON.stringify(snapshot);
   await fs.writeFile(DATA_FILE, payload, "utf-8");
 
   if (snapshot.tasks.length > 0) {
     await fs.writeFile(BACKUP_FILE, payload, "utf-8");
-    await appendHistorySnapshot(snapshot, "save");
+    await maybeAppendSaveHistory(snapshot);
     await appendDailySnapshot(snapshot);
   }
 }
@@ -419,13 +430,15 @@ async function normalizeSnapshot(snapshot: KanbanSnapshot): Promise<KanbanSnapsh
 
 async function persistSnapshot(snapshot: KanbanSnapshot): Promise<void> {
   memorySnapshot = snapshot;
-  if (isDatabaseStorageEnabled()) {
-    await writeToDatabase(snapshot);
-  }
-  const shouldWriteFile = !isDatabaseStorageEnabled() || !!process.env.DATA_DIR;
-  if (shouldWriteFile) {
-    await writeToFile(snapshot);
-  }
+  await enqueuePersist(async () => {
+    if (isDatabaseStorageEnabled()) {
+      await writeToDatabase(snapshot);
+    }
+    const shouldWriteFile = !isDatabaseStorageEnabled() || !!process.env.DATA_DIR;
+    if (shouldWriteFile) {
+      await writeToFile(snapshot);
+    }
+  });
 }
 
 async function loadFromFileStorage(): Promise<KanbanSnapshot> {
@@ -466,10 +479,18 @@ async function loadFromDatabaseStorage(): Promise<KanbanSnapshot> {
 export async function loadKanbanSnapshot(): Promise<KanbanSnapshot> {
   await ensureDeployBackup();
   ensureAutoHistoryScheduler();
+  if (memorySnapshot && memorySnapshot.tasks.length > 0) {
+    return memorySnapshot;
+  }
   const snapshot = isDatabaseStorageEnabled()
     ? await loadFromDatabaseStorage()
     : await loadFromFileStorage();
   return await normalizeSnapshot(snapshot);
+}
+
+async function ensureMemorySnapshot(): Promise<KanbanSnapshot> {
+  if (memorySnapshot && memorySnapshot.tasks.length > 0) return memorySnapshot;
+  return loadKanbanSnapshot();
 }
 
 export async function recoverBestKanbanSnapshot(): Promise<{
@@ -516,7 +537,7 @@ export async function saveKanbanSnapshot(
   tasks: Task[],
   expectedUpdatedAt?: string,
 ): Promise<KanbanSnapshot> {
-  const current = await loadKanbanSnapshot();
+  const current = await ensureMemorySnapshot();
   if (tasks.length === 0 && current.tasks.length > 0) {
     console.warn("[kanban] refused to save empty task list over existing data");
     return current;

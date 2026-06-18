@@ -103,30 +103,24 @@ export function KanbanBoard() {
 
   const addToColumn = (col: ColumnId) => {
     const id = uid();
-    setTasks(
-      (p) => [
-        ...p,
-        { id, code: nextTaskCode(p), title: "", description: "", assignee: user || "", column: col },
-      ],
-      { immediate: true },
-    );
+    setTasks((p) => [
+      ...p,
+      { id, code: nextTaskCode(p), title: "", description: "", assignee: user || "", column: col },
+    ]);
     setOpenTaskId(id);
   };
 
   const addToBacklog = () => {
     const id = uid();
-    setTasks(
-      (p) => [
-        { id, code: nextTaskCode(p), title: "", description: "", assignee: user || "", column: "backlog" },
-        ...p,
-      ],
-      { immediate: true },
-    );
+    setTasks((p) => [
+      { id, code: nextTaskCode(p), title: "", description: "", assignee: user || "", column: "backlog" },
+      ...p,
+    ]);
     setOpenTaskId(id);
   };
 
   const sendToTodo = (id: string) =>
-    setTasks((p) => p.map((x) => (x.id === id ? { ...x, column: "todo" } : x)), { immediate: true });
+    setTasks((p) => p.map((x) => (x.id === id ? { ...x, column: "todo" } : x)));
 
   const findContainer = (id: string): ColumnId | null => {
     const t = tasks.find((x) => x.id === id);
@@ -296,7 +290,7 @@ export function KanbanBoard() {
               column: "backlog" as const,
             }));
             return [...others, ...next];
-          }, { immediate: true })
+          })
         }
         onAdd={addToBacklog}
         onSendToTodo={sendToTodo}

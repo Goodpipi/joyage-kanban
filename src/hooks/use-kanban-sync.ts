@@ -3,8 +3,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getKanbanSnapshot, saveKanbanSnapshotFn } from "@/lib/api/kanban.functions";
 import { mergeKanbanTasks, type Task } from "@/lib/kanban-types";
 
-const POLL_MS = 3000;
-const SAVE_DEBOUNCE_MS = 400;
+const POLL_MS = 8000;
+const SAVE_DEBOUNCE_MS = 800;
+
+function tasksFingerprint(tasks: Task[]): string {
+  return `${tasks.length}|${tasks.map((t) => `${t.id}:${t.column}:${t.updatedAt ?? ""}:${t.title.length}`).join(",")}`;
+}
 
 export function useKanbanSync(enabled: boolean) {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -51,7 +55,7 @@ export function useKanbanSync(enabled: boolean) {
     }
     const tasksToSave = tasksRef.current;
     const expectedAt = updatedAtRef.current ?? undefined;
-    const tasksFingerprint = JSON.stringify(tasksToSave);
+    const tasksFingerprintAtSave = tasksFingerprint(tasksToSave);
     try {
       const result = await saveKanbanSnapshotFn({
         data: {
@@ -59,7 +63,7 @@ export function useKanbanSync(enabled: boolean) {
           expectedUpdatedAt: expectedAt,
         },
       });
-      if (JSON.stringify(tasksRef.current) !== tasksFingerprint) {
+      if (tasksFingerprint(tasksRef.current) !== tasksFingerprintAtSave) {
         dirtyRef.current = true;
         return;
       }
@@ -93,21 +97,21 @@ export function useKanbanSync(enabled: boolean) {
 
   const refresh = useCallback(async () => {
     if (hasPendingLocalEdits()) return;
-    const tasksBeforeFetch = tasksRef.current;
+    const tasksBeforeFetch = tasksFingerprint(tasksRef.current);
     const updatedAtBeforeFetch = updatedAtRef.current;
     try {
       const snapshot = await getKanbanSnapshot();
       if (hasPendingLocalEdits()) return;
-      if (JSON.stringify(tasksRef.current) !== JSON.stringify(tasksBeforeFetch)) return;
+      if (tasksFingerprint(tasksRef.current) !== tasksBeforeFetch) return;
       if (snapshot.updatedAt === updatedAtBeforeFetch) return;
 
       const local = tasksRef.current;
       const merged = local.length === 0 ? snapshot.tasks : mergeKanbanTasks(snapshot.tasks, local);
       if (hasPendingLocalEdits()) return;
-      if (JSON.stringify(tasksRef.current) !== JSON.stringify(tasksBeforeFetch)) return;
+      if (tasksFingerprint(tasksRef.current) !== tasksBeforeFetch) return;
 
       applySnapshot(merged, snapshot.updatedAt);
-      if (local.length > 0 && JSON.stringify(merged) !== JSON.stringify(snapshot.tasks)) {
+      if (local.length > 0 && tasksFingerprint(merged) !== tasksFingerprint(snapshot.tasks)) {
         dirtyRef.current = true;
         scheduleSave(true);
       }
