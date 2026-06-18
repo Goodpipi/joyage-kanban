@@ -8,7 +8,7 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
-    "start": "node --max-old-space-size=320 .output/server/index.mjs",
+    "start": "node --max-old-space-size=1536 .output/server/index.mjs",
     "lint": "eslint .",
     "format": "prettier --write ."
   },

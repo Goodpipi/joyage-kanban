@@ -2,19 +2,19 @@ services:
   - type: web
     name: joyage-kanban
     runtime: node
-    plan: starter
+    plan: standard
     region: singapore
     repo: https://github.com/Goodpipi/joyage-kanban
     branch: main
     buildCommand: npm install --include=dev && npm run build
-    startCommand: node --max-old-space-size=320 .output/server/index.mjs
+    startCommand: node --max-old-space-size=1536 .output/server/index.mjs
     healthCheckPath: /
     autoDeploy: true
     envVars:
       - key: NODE_VERSION
         value: 22.22.0
       - key: NODE_OPTIONS
-        value: --max-old-space-size=320
+        value: --max-old-space-size=1536
       - key: DATA_DIR
         value: /var/data
       - key: KANBAN_DEPLOY_MAX

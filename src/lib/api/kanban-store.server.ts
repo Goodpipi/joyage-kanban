@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { externalizeTaskImages, migrateEmbeddedImagesInJsonFile } from "@/lib/api/kanban-image-store.server";
+import { externalizeTaskImages, IMAGES_DIR, migrateEmbeddedImagesInJsonFile } from "@/lib/api/kanban-image-store.server";
 import { KANBAN_SEED } from "@/lib/kanban-seed";
 import { ensureTaskCodes, mergeKanbanTasks, type Task } from "@/lib/kanban-types";
 import {
@@ -96,6 +96,30 @@ async function pruneDir(files: string[], max: number): Promise<void> {
   }
 }
 
+async function pruneDeployBackups(jsonFiles: string[]): Promise<void> {
+  const sorted = [...jsonFiles].sort().reverse();
+  await pruneDir(sorted, MAX_DEPLOY_FILES);
+  const kept = new Set(
+    sorted.slice(0, MAX_DEPLOY_FILES).map((f) => {
+      const m = path.basename(f).match(/^(.+)-deploy\.json$/);
+      return m?.[1];
+    }),
+  );
+  let names: string[] = [];
+  try {
+    names = await fs.readdir(DEPLOY_DIR);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    if (!name.endsWith("-images")) continue;
+    const stamp = name.slice(0, -"-images".length);
+    if (!kept.has(stamp)) {
+      await fs.rm(path.join(DEPLOY_DIR, name), { recursive: true, force: true }).catch(() => {});
+    }
+  }
+}
+
 function enqueuePersist(work: () => Promise<void>): Promise<void> {
   persistChain = persistChain.then(work).catch((error) => {
     console.warn("[kanban] persist queue error", error);
@@ -134,7 +158,12 @@ export function runDeployBackupOnStartup(): Promise<void> {
       await fs.mkdir(DEPLOY_DIR, { recursive: true });
       await fs.copyFile(source, deployFile);
       await fs.copyFile(source, path.join(DATA_DIR, "kanban.predeploy.json"));
-      await pruneDir(await listDeployFiles(), MAX_DEPLOY_FILES);
+      try {
+        await fs.cp(IMAGES_DIR, path.join(DEPLOY_DIR, `${stamp}-images`), { recursive: true });
+      } catch {
+        // no images dir yet
+      }
+      await pruneDeployBackups(await listDeployFiles());
 
       const { size } = await fs.stat(source);
       deployBackupDone = true;

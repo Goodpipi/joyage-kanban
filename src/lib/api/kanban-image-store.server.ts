@@ -12,6 +12,7 @@ export const IMAGES_DIR = path.join(DATA_DIR, "images");
 const IMAGE_REF_PREFIX = "/api/kanban/images/";
 const SAFE_IMAGE_NAME = /^[\w-]+\.(png|jpe?g|webp|gif)$/i;
 const DATA_URL_TOKEN_RE = /^data:image\/([a-zA-Z0-9+.-]+);base64,([A-Za-z0-9+/=]+)$/;
+export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
 function mimeToExt(mime: string): string {
   const m = mime.toLowerCase();
@@ -60,6 +61,11 @@ function persistDataUrlSync(seen: Map<string, string>, dataUrl: string): string 
 
   const match = DATA_URL_TOKEN_RE.exec(dataUrl);
   if (!match) return dataUrl;
+
+  const bytes = Buffer.byteLength(match[2], "base64");
+  if (bytes > MAX_IMAGE_BYTES) {
+    throw new Error(`Image exceeds ${MAX_IMAGE_BYTES / (1024 * 1024)}MB limit`);
+  }
 
   const ext = mimeToExt(match[1]);
   const filename = `${crypto.randomUUID()}.${ext}`;
@@ -155,6 +161,14 @@ export async function migrateEmbeddedImagesInJsonFile(filePath: string): Promise
 async function saveDataUrl(dataUrl: string): Promise<string> {
   const seen = new Map<string, string>();
   return persistDataUrlSync(seen, dataUrl);
+}
+
+/** Save one uploaded image; returns /api/kanban/images/... ref. */
+export async function uploadImageFromDataUrl(dataUrl: string): Promise<string> {
+  if (!dataUrl.startsWith("data:image/")) {
+    throw new Error("Invalid image data");
+  }
+  return saveDataUrl(dataUrl);
 }
 
 async function externalizeImageValue(value: string): Promise<string> {

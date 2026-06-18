@@ -8,9 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import {
-  TAG_OPTIONS, avatarColor, collectImagesFromClipboard, fileToDataUrl, uid,
+  TAG_OPTIONS, avatarColor, uid,
   type Task, type TagId, type TaskComment,
 } from "@/lib/kanban-types";
+import { uploadImagesFromClipboard, uploadKanbanImageFile } from "@/lib/kanban-image-client";
 import { ClickableImageThumbnail, ImagePreviewDialog } from "@/components/kanban/ImagePreviewDialog";
 import { cn } from "@/lib/utils";
 
@@ -51,7 +52,7 @@ export function TaskDetailDialog({ task, open, onOpenChange, onChange, currentUs
   };
 
   const onDescPaste = async (e: React.ClipboardEvent) => {
-    const imgs = await collectImagesFromClipboard(e);
+    const imgs = await uploadImagesFromClipboard(e);
     if (imgs.length) update({ descriptionImages: [...(draft.descriptionImages || []), ...imgs] });
   };
 
@@ -59,14 +60,14 @@ export function TaskDetailDialog({ task, open, onOpenChange, onChange, currentUs
     if (!files) return;
     const urls: string[] = [];
     for (const f of Array.from(files)) {
-      const u = await fileToDataUrl(f);
+      const u = await uploadKanbanImageFile(f);
       if (u) urls.push(u);
     }
     if (urls.length) update({ descriptionImages: [...(draft.descriptionImages || []), ...urls] });
   };
 
   const onCommentPaste = async (e: React.ClipboardEvent) => {
-    const imgs = await collectImagesFromClipboard(e);
+    const imgs = await uploadImagesFromClipboard(e);
     if (imgs.length) setCommentImages((p) => [...p, ...imgs]);
   };
 
@@ -74,7 +75,7 @@ export function TaskDetailDialog({ task, open, onOpenChange, onChange, currentUs
     if (!files) return;
     const urls: string[] = [];
     for (const f of Array.from(files)) {
-      const u = await fileToDataUrl(f);
+      const u = await uploadKanbanImageFile(f);
       if (u) urls.push(u);
     }
     if (urls.length) setCommentImages((p) => [...p, ...urls]);
