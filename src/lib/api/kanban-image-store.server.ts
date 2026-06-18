@@ -1,5 +1,7 @@
 import crypto from "node:crypto";
+import { createReadStream, createWriteStream } from "node:fs";
 import fs from "node:fs/promises";
+import fsSync from "node:fs";
 import path from "node:path";
 
 import type { Task } from "@/lib/kanban-types";
@@ -7,9 +9,9 @@ import type { Task } from "@/lib/kanban-types";
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), ".data");
 export const IMAGES_DIR = path.join(DATA_DIR, "images");
 
-const DATA_URL_RE = /data:image\/([a-zA-Z0-9+.-]+);base64,([A-Za-z0-9+/=]+)/g;
 const IMAGE_REF_PREFIX = "/api/kanban/images/";
 const SAFE_IMAGE_NAME = /^[\w-]+\.(png|jpe?g|webp|gif)$/i;
+const DATA_URL_TOKEN_RE = /^data:image\/([a-zA-Z0-9+.-]+);base64,([A-Za-z0-9+/=]+)$/;
 
 function mimeToExt(mime: string): string {
   const m = mime.toLowerCase();
@@ -52,15 +54,107 @@ export async function serveKanbanImage(pathname: string): Promise<Response | nul
   }
 }
 
-async function saveDataUrl(dataUrl: string): Promise<string> {
-  const match = /^data:image\/([a-zA-Z0-9+.-]+);base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
+function persistDataUrlSync(seen: Map<string, string>, dataUrl: string): string {
+  const cached = seen.get(dataUrl);
+  if (cached) return cached;
+
+  const match = DATA_URL_TOKEN_RE.exec(dataUrl);
   if (!match) return dataUrl;
 
   const ext = mimeToExt(match[1]);
   const filename = `${crypto.randomUUID()}.${ext}`;
-  await fs.mkdir(IMAGES_DIR, { recursive: true });
-  await fs.writeFile(path.join(IMAGES_DIR, filename), Buffer.from(match[2], "base64"));
-  return `${IMAGE_REF_PREFIX}${filename}`;
+  const ref = `${IMAGE_REF_PREFIX}${filename}`;
+  fsSync.mkdirSync(IMAGES_DIR, { recursive: true });
+  fsSync.writeFileSync(path.join(IMAGES_DIR, filename), Buffer.from(match[2], "base64"));
+  seen.set(dataUrl, ref);
+  return ref;
+}
+
+async function fileContainsDataUrls(filePath: string): Promise<boolean> {
+  let handle: Awaited<ReturnType<typeof fs.open>> | null = null;
+  try {
+    handle = await fs.open(filePath, "r");
+    const { size } = await handle.stat();
+    const buf = Buffer.alloc(128 * 1024);
+    for (let pos = 0; pos < size; pos += buf.length) {
+      const { bytesRead } = await handle.read(buf, 0, buf.length, pos);
+      if (bytesRead <= 0) break;
+      if (buf.subarray(0, bytesRead).includes("data:image")) return true;
+    }
+    return false;
+  } catch {
+    return false;
+  } finally {
+    await handle?.close().catch(() => {});
+  }
+}
+
+/** Stream through JSON on disk — never loads the whole file into memory. */
+export async function migrateEmbeddedImagesInJsonFile(filePath: string): Promise<boolean> {
+  if (!(await fileContainsDataUrls(filePath))) return false;
+
+  const tmpPath = `${filePath}.migrate-tmp`;
+  const seen = new Map<string, string>();
+  let changed = false;
+
+  await new Promise<void>((resolve, reject) => {
+    const input = createReadStream(filePath, { encoding: "utf8", highWaterMark: 256 * 1024 });
+    const output = createWriteStream(tmpPath, { encoding: "utf8" });
+    let carry = "";
+
+    const processCarry = () => {
+      while (true) {
+        const start = carry.indexOf("data:image/");
+        if (start < 0) {
+          if (carry.length > 120) {
+            output.write(carry.slice(0, -80));
+            carry = carry.slice(-80);
+          }
+          return;
+        }
+
+        if (start > 0) {
+          output.write(carry.slice(0, start));
+          carry = carry.slice(start);
+        }
+
+        const close = carry.indexOf('"', "data:image/".length);
+        if (close < 0) return;
+
+        const token = carry.slice(0, close);
+        carry = carry.slice(close);
+        const ref = persistDataUrlSync(seen, token);
+        if (ref !== token) changed = true;
+        output.write(ref);
+      }
+    };
+
+    input.on("data", (chunk: string) => {
+      carry += chunk;
+      processCarry();
+    });
+    input.on("end", () => {
+      if (carry) output.write(carry);
+      output.end();
+    });
+    input.on("error", reject);
+    output.on("error", reject);
+    output.on("finish", () => resolve());
+  });
+
+  if (!changed) {
+    await fs.unlink(tmpPath).catch(() => {});
+    return false;
+  }
+
+  await fs.rename(tmpPath, filePath);
+  console.info(`[kanban] stream-migrated ${seen.size} images in ${path.basename(filePath)}`);
+  return true;
+}
+
+async function saveDataUrl(dataUrl: string): Promise<string> {
+  const seen = new Map<string, string>();
+  return persistDataUrlSync(seen, dataUrl);
 }
 
 async function externalizeImageValue(value: string): Promise<string> {
@@ -103,46 +197,4 @@ export async function externalizeTaskImages(tasks: Task[]): Promise<{ tasks: Tas
     }),
   );
   return { tasks: next, changed };
-}
-
-/** One-pass in-file migration without JSON.parse — shrinks large kanban.json on disk. */
-export async function migrateEmbeddedImagesInJsonFile(filePath: string): Promise<boolean> {
-  let raw: string;
-  try {
-    raw = await fs.readFile(filePath, "utf-8");
-  } catch {
-    return false;
-  }
-  if (!raw.includes("data:image")) return false;
-
-  const seen = new Map<string, string>();
-  const matches = [...raw.matchAll(DATA_URL_RE)];
-
-  for (const m of matches) {
-    const full = m[0];
-    if (seen.has(full)) continue;
-    const ext = mimeToExt(m[1]);
-    const filename = `${crypto.randomUUID()}.${ext}`;
-    seen.set(full, `${IMAGE_REF_PREFIX}${filename}`);
-  }
-
-  if (seen.size === 0) return false;
-
-  await fs.mkdir(IMAGES_DIR, { recursive: true });
-  await Promise.all(
-    [...seen.entries()].map(async ([full, ref]) => {
-      const match = /^data:image\/([a-zA-Z0-9+.-]+);base64,([A-Za-z0-9+/=]+)$/.exec(full);
-      if (!match) return;
-      await fs.writeFile(path.join(IMAGES_DIR, path.basename(ref)), Buffer.from(match[2], "base64"));
-    }),
-  );
-
-  let migrated = raw;
-  for (const [full, ref] of seen) {
-    migrated = migrated.split(full).join(ref);
-  }
-
-  await fs.writeFile(filePath, migrated, "utf-8");
-  console.info(`[kanban] migrated ${seen.size} embedded images in ${path.basename(filePath)}`);
-  return true;
 }

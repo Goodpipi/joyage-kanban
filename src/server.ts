@@ -1,15 +1,8 @@
 import "./lib/error-capture";
 
 import { serveKanbanImage } from "./lib/api/kanban-image-store.server";
-import { runDeployBackupOnStartup, runImageMigrationOnStartup } from "./lib/api/kanban-store.server";
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
-
-void runDeployBackupOnStartup()
-  .then(() => runImageMigrationOnStartup())
-  .catch((error) => {
-    console.warn("[kanban] startup maintenance error", error);
-  });
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;

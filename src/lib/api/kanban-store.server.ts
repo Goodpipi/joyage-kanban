@@ -62,6 +62,11 @@ function pickBestSnapshot(snapshots: KanbanSnapshot[]): KanbanSnapshot | null {
 
 async function readSnapshotFile(file: string): Promise<KanbanSnapshot | null> {
   try {
+    const stat = await fs.stat(file);
+    if (stat.size > 32 * 1024 * 1024) {
+      console.warn(`[kanban] ${path.basename(file)} is ${stat.size} bytes — running image migration first`);
+      await migrateEmbeddedImagesInJsonFile(file);
+    }
     const raw = await fs.readFile(file, "utf-8");
     const parsed = JSON.parse(raw) as unknown;
     if (!isValidSnapshot(parsed)) return null;
@@ -145,7 +150,7 @@ export function runDeployBackupOnStartup(): Promise<void> {
   return deployBackupPromise;
 }
 
-/** Migrate embedded base64 images to /var/data/images/ without loading full JSON tree. */
+/** Migrate embedded base64 images using streaming (low memory). */
 export function runImageMigrationOnStartup(): Promise<void> {
   if (imageMigrationPromise) return imageMigrationPromise;
 
@@ -153,8 +158,13 @@ export function runImageMigrationOnStartup(): Promise<void> {
     if (imageMigrationDone) return;
     try {
       let changed = false;
-      if (await migrateEmbeddedImagesInJsonFile(DATA_FILE)) changed = true;
-      if (await migrateEmbeddedImagesInJsonFile(BACKUP_FILE)) changed = true;
+      if (await migrateEmbeddedImagesInJsonFile(DATA_FILE)) {
+        changed = true;
+        await fs.copyFile(DATA_FILE, BACKUP_FILE).catch(() => {});
+      } else if (await migrateEmbeddedImagesInJsonFile(BACKUP_FILE)) {
+        changed = true;
+        await fs.copyFile(BACKUP_FILE, DATA_FILE).catch(() => {});
+      }
       if (changed) memorySnapshot = null;
       imageMigrationDone = true;
     } catch (error) {
