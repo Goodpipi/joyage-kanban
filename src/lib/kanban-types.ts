@@ -86,6 +86,37 @@ export function ensureTaskCodes(tasks: Array<Omit<Task, "code"> & { code?: strin
   return { tasks: normalized, changed };
 }
 
+function asActiveColumn(column: TaskColumn): ActiveColumn | undefined {
+  return column === "archived" ? undefined : column;
+}
+
+/** Merge incoming client save with server state (multi-tab / multi-user). */
+export function mergeKanbanTask(server: Task, incoming: Task): Task {
+  if (incoming.column === "archived") {
+    const archivedFrom =
+      incoming.archivedFrom ??
+      (server.column !== "archived" ? asActiveColumn(server.column) : server.archivedFrom);
+    return { ...incoming, archivedFrom };
+  }
+
+  if (server.column === "archived" && server.archivedFrom) {
+    // Stale client still has the pre-archive column — keep archived on server.
+    if (incoming.column === server.archivedFrom) return server;
+    const { archivedFrom: _drop, ...restored } = incoming;
+    return restored as Task;
+  }
+
+  return incoming;
+}
+
+export function mergeKanbanTasks(server: Task[], incoming: Task[]): Task[] {
+  const serverMap = new Map(server.map((t) => [t.id, t]));
+  return incoming.map((inc) => {
+    const cur = serverMap.get(inc.id);
+    return cur ? mergeKanbanTask(cur, inc) : inc;
+  });
+}
+
 // Macaron palette for assignee avatars (pastel, harmonious with primary #DF8BA4)
 const AVATAR_PALETTE = [
   "linear-gradient(135deg,#FFB5C2,#FF8FA8)", // pink

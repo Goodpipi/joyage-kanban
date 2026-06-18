@@ -79,21 +79,25 @@ export function KanbanBoard() {
     setTasks((p) => p.filter((x) => x.id !== id), { immediate: true });
 
   const archiveTask = (id: string) =>
-    setTasks((p) =>
-      p.map((t) => {
-        if (t.id !== id || t.column === "archived") return t;
-        const from: ActiveColumn = t.column === "backlog" ? "backlog" : t.column;
-        return { ...t, archivedFrom: from, column: "archived" as const };
-      }),
+    setTasks(
+      (p) =>
+        p.map((t) => {
+          if (t.id !== id || t.column === "archived") return t;
+          const from: ActiveColumn = t.column === "backlog" ? "backlog" : t.column;
+          return { ...t, archivedFrom: from, column: "archived" as const };
+        }),
+      { immediate: true },
     );
 
   const restoreTask = (id: string) =>
-    setTasks((p) =>
-      p.map((t) => {
-        if (t.id !== id || t.column !== "archived") return t;
-        const { archivedFrom, ...rest } = t;
-        return { ...rest, column: archivedFrom ?? "todo" };
-      }),
+    setTasks(
+      (p) =>
+        p.map((t) => {
+          if (t.id !== id || t.column !== "archived") return t;
+          const { archivedFrom, ...rest } = t;
+          return { ...rest, column: archivedFrom ?? "todo" };
+        }),
+      { immediate: true },
     );
 
   const addToColumn = (col: ColumnId) => {

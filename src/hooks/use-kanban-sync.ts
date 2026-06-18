@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getKanbanSnapshot, saveKanbanSnapshotFn } from "@/lib/api/kanban.functions";
-import type { Task } from "@/lib/kanban-types";
+import { mergeKanbanTasks, type Task } from "@/lib/kanban-types";
 
 const POLL_MS = 3000;
 const SAVE_DEBOUNCE_MS = 400;
@@ -33,21 +33,6 @@ export function useKanbanSync(enabled: boolean) {
     tasksRef.current = nextTasks;
   }, []);
 
-  const refresh = useCallback(async () => {
-    if (dirtyRef.current || savingRef.current) return;
-    try {
-      const snapshot = await getKanbanSnapshot();
-      if (snapshot.updatedAt !== updatedAtRef.current) {
-        applySnapshot(snapshot.tasks, snapshot.updatedAt);
-      }
-      setSyncError(null);
-    } catch {
-      setSyncError("无法同步看板数据");
-    } finally {
-      setReady(true);
-    }
-  }, [applySnapshot]);
-
   const flushSave = useCallback(async () => {
     if (!dirtyRef.current || savingRef.current) return;
     savingRef.current = true;
@@ -62,18 +47,8 @@ export function useKanbanSync(enabled: boolean) {
           expectedUpdatedAt: updatedAtRef.current ?? undefined,
         },
       });
-      if ("conflict" in result) {
-        if (isNewer(result.snapshot.updatedAt, updatedAtRef.current ?? "")) {
-          dirtyRef.current = false;
-          applySnapshot(result.snapshot.tasks, result.snapshot.updatedAt);
-        } else {
-          dirtyRef.current = true;
-          setTimeout(() => void flushSave(), 300);
-        }
-      } else {
-        dirtyRef.current = false;
-        applySnapshot(result.tasks, result.updatedAt);
-      }
+      dirtyRef.current = false;
+      applySnapshot(result.tasks, result.updatedAt);
       setSyncError(null);
     } catch {
       dirtyRef.current = true;
@@ -97,6 +72,26 @@ export function useKanbanSync(enabled: boolean) {
     },
     [flushSave],
   );
+
+  const refresh = useCallback(async () => {
+    if (dirtyRef.current || savingRef.current) return;
+    try {
+      const snapshot = await getKanbanSnapshot();
+      if (snapshot.updatedAt !== updatedAtRef.current) {
+        const merged = mergeKanbanTasks(snapshot.tasks, tasksRef.current);
+        applySnapshot(merged, snapshot.updatedAt);
+        if (JSON.stringify(merged) !== JSON.stringify(snapshot.tasks)) {
+          dirtyRef.current = true;
+          scheduleSave(true);
+        }
+      }
+      setSyncError(null);
+    } catch {
+      setSyncError("无法同步看板数据");
+    } finally {
+      setReady(true);
+    }
+  }, [applySnapshot, scheduleSave]);
 
   const setTasksAndSave = useCallback(
     (updater: Task[] | ((prev: Task[]) => Task[]), options?: { immediate?: boolean }) => {
@@ -124,8 +119,4 @@ export function useKanbanSync(enabled: boolean) {
   }, [enabled, refresh, flushSave]);
 
   return { tasks, setTasks: setTasksAndSave, ready, syncError, refresh };
-}
-
-function isNewer(next: string, current: string): boolean {
-  return next > current;
 }

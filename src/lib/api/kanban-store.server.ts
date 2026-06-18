@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { KANBAN_SEED } from "@/lib/kanban-seed";
-import { ensureTaskCodes, type Task } from "@/lib/kanban-types";
+import { ensureTaskCodes, mergeKanbanTasks, type Task } from "@/lib/kanban-types";
 import {
   isDatabaseStorageEnabled,
   readFromDatabase,
@@ -141,14 +141,15 @@ export async function loadKanbanSnapshot(): Promise<KanbanSnapshot> {
 export async function saveKanbanSnapshot(
   tasks: Task[],
   expectedUpdatedAt?: string,
-): Promise<KanbanSnapshot | { conflict: true; snapshot: KanbanSnapshot }> {
+): Promise<KanbanSnapshot> {
   const current = await loadKanbanSnapshot();
-  if (expectedUpdatedAt && current.updatedAt !== expectedUpdatedAt) {
-    return { conflict: true, snapshot: current };
-  }
+  const mergedTasks =
+    expectedUpdatedAt && current.updatedAt !== expectedUpdatedAt
+      ? mergeKanbanTasks(current.tasks, tasks)
+      : tasks;
 
   const snapshot: KanbanSnapshot = {
-    tasks: ensureTaskCodes(tasks).tasks,
+    tasks: ensureTaskCodes(mergedTasks).tasks,
     updatedAt: new Date().toISOString(),
   };
   try {
