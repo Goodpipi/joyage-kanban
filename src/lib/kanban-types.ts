@@ -7,7 +7,7 @@ export interface TaskComment {
   id: string;
   author: string;
   text: string;
-  images: string[]; // data URLs
+  images: string[]; // /api/kanban/images/... or legacy data URLs
   createdAt: string;
 }
 
@@ -16,7 +16,7 @@ export interface Task {
   code: string;
   title: string;
   description: string;
-  descriptionImages?: string[]; // data URLs pasted/uploaded in description
+  descriptionImages?: string[]; // /api/kanban/images/... or legacy data URLs
   dueDate?: string; // ISO
   assignee: string;
   tags?: TagId[];

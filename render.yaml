@@ -17,8 +17,8 @@ services:
         value: --max-old-space-size=384
       - key: DATA_DIR
         value: /var/data
-      - key: KANBAN_HISTORY_MAX
-        value: "100"
+      - key: KANBAN_DEPLOY_MAX
+        value: "5"
     disk:
       name: kanban-data
       mountPath: /var/data
