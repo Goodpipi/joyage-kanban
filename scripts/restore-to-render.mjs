@@ -1,15 +1,40 @@
 import { readFileSync } from "node:fs";
-import { toJSONAsync } from "seroval";
+import { fromCrossJSON, toJSONAsync } from "seroval";
 
 const BASE = process.env.KANBAN_URL ?? "https://joyage-kanban.onrender.com";
 const backupPath = process.argv[2] ?? "backups/post-deploy-2026-06-16.json";
 
-async function findServerFnId(bundleText, label) {
-  const idx = bundleText.indexOf(label);
-  if (idx < 0) return null;
-  const slice = bundleText.slice(Math.max(0, idx - 120), idx + 120);
-  const m = slice.match(/[a-f0-9]{64}/);
-  return m?.[0] ?? null;
+const SAVE_FN_IDS = [
+  "854f338f2f15a7eb9934536430ba65bfd3404b7cd0c6a4c8e5964450e9d780ee",
+  "72a92c652775e51a6ee2506c8aaf53ab9d25a857c039908946907616608f64d8",
+];
+
+const RESTORE_FN_IDS = [
+  "625bb25f6b9835318d6293741b4c018d92a6397ba541637caf361356b59446cb",
+];
+
+async function fetchBundleIds() {
+  const html = await fetch(BASE, { signal: AbortSignal.timeout(120_000) }).then((r) => r.text());
+  const assets = [...new Set(html.match(/\/assets\/index-[^"]+\.js/g) ?? [])];
+  const ids = new Set();
+  for (const asset of assets) {
+    const js = await fetch(BASE + asset, { signal: AbortSignal.timeout(120_000) }).then((r) => r.text());
+    for (const m of js.matchAll(/[a-f0-9]{64}/g)) ids.add(m[0]);
+  }
+  return [...ids];
+}
+
+async function callFn(fnId, payload) {
+  const body = JSON.stringify(await toJSONAsync(payload));
+  const res = await fetch(`${BASE}/_serverFn/${fnId}`, {
+    method: "POST",
+    headers: { "x-tsr-serverFn": "true", "Content-Type": "application/json" },
+    signal: AbortSignal.timeout(120_000),
+    body,
+  });
+  const text = await res.text();
+  if (!res.ok) throw new Error(`${fnId} failed ${res.status}: ${text.slice(0, 300)}`);
+  return fromCrossJSON(JSON.parse(text), { plugins: [] });
 }
 
 async function main() {
@@ -17,33 +42,39 @@ async function main() {
   const tasks = backup.tasks ?? backup;
   console.log(`restoring ${tasks.length} tasks from ${backupPath}`);
 
-  const html = await fetch(BASE).then((r) => r.text());
-  const assetMatch = html.match(/\/assets\/index-[^"]+\.js/g);
-  const assets = [...new Set(assetMatch ?? [])];
-  let restoreId = null;
-  for (const asset of assets) {
-    const js = await fetch(BASE + asset).then((r) => r.text());
-    restoreId = await findServerFnId(js, "restoreKanbanSnapshotFn");
-    if (restoreId) break;
-  }
-  if (!restoreId) {
-    throw new Error("restoreKanbanSnapshotFn id not found in production bundle — deploy first");
+  const bundleIds = await fetchBundleIds();
+  const restoreCandidates = [
+    ...RESTORE_FN_IDS,
+    ...bundleIds.filter((id) => id.startsWith("625bb25")),
+  ];
+  const saveCandidates = [
+    ...SAVE_FN_IDS,
+    ...bundleIds,
+  ];
+
+  for (const id of restoreCandidates) {
+    try {
+      const decoded = await callFn(id, { data: { tasks } });
+      const snapshot = decoded?.result ?? decoded;
+      console.log("restore via", id.slice(0, 8), "tasks:", snapshot.tasks?.length);
+      return;
+    } catch (e) {
+      console.warn("restore fn miss:", id.slice(0, 8), String(e).slice(0, 80));
+    }
   }
 
-  const body = JSON.stringify(await toJSONAsync({ data: { tasks } }));
-  const res = await fetch(`${BASE}/_serverFn/${restoreId}`, {
-    method: "POST",
-    headers: { "x-tsr-serverFn": "true", "Content-Type": "application/json" },
-    body,
-  });
-  const text = await res.text();
-  if (!res.ok) throw new Error(`restore failed ${res.status}: ${text.slice(0, 300)}`);
+  for (const id of saveCandidates) {
+    try {
+      const decoded = await callFn(id, { data: { tasks } });
+      const snapshot = decoded?.result ?? decoded;
+      console.log("save via", id.slice(0, 8), "tasks:", snapshot.tasks?.length);
+      return;
+    } catch {
+      // try next
+    }
+  }
 
-  const { fromCrossJSON } = await import("seroval");
-  const decoded = fromCrossJSON(JSON.parse(text), { plugins: [] });
-  const snapshot = decoded?.result ?? decoded;
-  console.log("restored tasks:", snapshot.tasks?.length ?? "?");
-  console.log("updatedAt:", snapshot.updatedAt ?? "?");
+  throw new Error("could not restore — server unreachable or fn ids changed");
 }
 
 main().catch((e) => {
