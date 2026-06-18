@@ -1,13 +1,37 @@
 import { fromCrossJSON, toJSONAsync } from "seroval";
 
 const BASE = process.env.KANBAN_URL ?? "https://joyage-kanban.onrender.com";
+const FETCH_TIMEOUT_MS = 120_000;
+const SCAN_FN_IDS = [
+  "7fae92a74296156c9cf43727baef297eac8541215ea47552e99b5daf57b3f97c",
+];
+const RECOVER_FN_IDS = [
+  "db3a16c071bdf73f425bdbe2165291be541303ad9558842707d3cb4e357dc0be",
+];
+
+async function fetchWithRetry(url, init = {}, tries = 5) {
+  let lastErr;
+  for (let i = 0; i < tries; i++) {
+    try {
+      return await fetch(url, {
+        ...init,
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      });
+    } catch (err) {
+      lastErr = err;
+      console.warn(`fetch retry ${i + 1}/${tries}:`, err.message);
+      await new Promise((r) => setTimeout(r, 15_000));
+    }
+  }
+  throw lastErr;
+}
 
 async function fetchBundleIds() {
-  const html = await fetch(BASE, { signal: AbortSignal.timeout(120_000) }).then((r) => r.text());
+  const html = await fetchWithRetry(BASE).then((r) => r.text());
   const assets = [...new Set(html.match(/\/assets\/index-[^"]+\.js/g) ?? [])];
   const ids = new Set();
   for (const asset of assets) {
-    const js = await fetch(BASE + asset, { signal: AbortSignal.timeout(120_000) }).then((r) => r.text());
+    const js = await fetchWithRetry(BASE + asset).then((r) => r.text());
     for (const m of js.matchAll(/[a-f0-9]{64}/g)) ids.add(m[0]);
   }
   return [...ids];
@@ -15,10 +39,10 @@ async function fetchBundleIds() {
 
 async function callFn(fnId, payload = {}) {
   const body = JSON.stringify(await toJSONAsync(payload));
-  const res = await fetch(`${BASE}/_serverFn/${fnId}`, {
+  const res = await fetchWithRetry(`${BASE}/_serverFn/${fnId}`, {
     method: "POST",
     headers: { "x-tsr-serverFn": "true", "Content-Type": "application/json" },
-    signal: AbortSignal.timeout(120_000),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     body,
   });
   const text = await res.text();
@@ -31,7 +55,7 @@ async function findFnId(label) {
   const html = await fetch(BASE, { signal: AbortSignal.timeout(120_000) }).then((r) => r.text());
   const assets = [...new Set(html.match(/\/assets\/index-[^"]+\.js/g) ?? [])];
   for (const asset of assets) {
-    const js = await fetch(BASE + asset, { signal: AbortSignal.timeout(120_000) }).then((r) => r.text());
+    const js = await fetchWithRetry(BASE + asset).then((r) => r.text());
     if (!js.includes(label)) continue;
     const idx = js.indexOf(label);
     const slice = js.slice(idx, idx + 200);
@@ -44,8 +68,8 @@ async function findFnId(label) {
 async function main() {
   console.log("Scanning", BASE);
 
-  const scanId = await findFnId("scanKanbanDiskFn");
-  const recoverId = await findFnId("recoverKanbanFromDiskFn");
+  const scanId = (await findFnId("scanKanbanDiskFn")) ?? SCAN_FN_IDS[0];
+  const recoverId = (await findFnId("recoverKanbanFromDiskFn")) ?? RECOVER_FN_IDS[0];
 
   if (!scanId || !recoverId) {
     throw new Error("scan/recover API not deployed yet — push and wait for Render deploy first");
