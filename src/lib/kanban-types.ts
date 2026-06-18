@@ -110,6 +110,7 @@ export function mergeKanbanTask(server: Task, incoming: Task): Task {
 }
 
 export function mergeKanbanTasks(server: Task[], incoming: Task[]): Task[] {
+  if (incoming.length === 0) return server;
   const serverMap = new Map(server.map((t) => [t.id, t]));
   return incoming.map((inc) => {
     const cur = serverMap.get(inc.id);

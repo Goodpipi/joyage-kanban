@@ -78,9 +78,10 @@ export function useKanbanSync(enabled: boolean) {
     try {
       const snapshot = await getKanbanSnapshot();
       if (snapshot.updatedAt !== updatedAtRef.current) {
-        const merged = mergeKanbanTasks(snapshot.tasks, tasksRef.current);
+        const local = tasksRef.current;
+        const merged = local.length === 0 ? snapshot.tasks : mergeKanbanTasks(snapshot.tasks, local);
         applySnapshot(merged, snapshot.updatedAt);
-        if (JSON.stringify(merged) !== JSON.stringify(snapshot.tasks)) {
+        if (local.length > 0 && JSON.stringify(merged) !== JSON.stringify(snapshot.tasks)) {
           dirtyRef.current = true;
           scheduleSave(true);
         }

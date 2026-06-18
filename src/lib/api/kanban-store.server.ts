@@ -138,11 +138,24 @@ export async function loadKanbanSnapshot(): Promise<KanbanSnapshot> {
   return await normalizeSnapshot(snapshot);
 }
 
+export async function replaceKanbanSnapshot(tasks: Task[]): Promise<KanbanSnapshot> {
+  const snapshot: KanbanSnapshot = {
+    tasks: ensureTaskCodes(tasks).tasks,
+    updatedAt: new Date().toISOString(),
+  };
+  await persistSnapshot(snapshot);
+  return snapshot;
+}
+
 export async function saveKanbanSnapshot(
   tasks: Task[],
   expectedUpdatedAt?: string,
 ): Promise<KanbanSnapshot> {
   const current = await loadKanbanSnapshot();
+  if (tasks.length === 0 && current.tasks.length > 0) {
+    console.warn("[kanban] refused to save empty task list over existing data");
+    return current;
+  }
   const mergedTasks =
     expectedUpdatedAt && current.updatedAt !== expectedUpdatedAt
       ? mergeKanbanTasks(current.tasks, tasks)
