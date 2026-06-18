@@ -1,7 +1,12 @@
 import "./lib/error-capture";
 
+import { runDeployBackupOnStartup } from "./lib/api/kanban-store.server";
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
+
+void runDeployBackupOnStartup().catch((error) => {
+  console.warn("[kanban] startup deploy backup error", error);
+});
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;

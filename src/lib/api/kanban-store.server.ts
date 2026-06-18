@@ -40,6 +40,7 @@ const SAVE_HISTORY_THROTTLE_MS = Number(process.env.KANBAN_SAVE_HISTORY_MS ?? 5 
 let memorySnapshot: KanbanSnapshot | null = null;
 let autoHistoryStarted = false;
 let deployBackupDone = false;
+let deployBackupPromise: Promise<void> | null = null;
 let lastAutoSnapshotAt = 0;
 let lastSaveHistoryAt = 0;
 let persistChain: Promise<void> = Promise.resolve();
@@ -162,13 +163,15 @@ async function appendHistorySnapshot(snapshot: KanbanSnapshot, tag = "save"): Pr
   await pruneDir(await listHistoryFiles(), MAX_HISTORY_FILES);
 }
 
-async function appendDeploySnapshot(snapshot: KanbanSnapshot): Promise<void> {
+async function appendDeploySnapshot(snapshot: KanbanSnapshot, force = false): Promise<void> {
   if (snapshot.tasks.length === 0) return;
 
-  const files = await listDeployFiles();
-  if (files.length > 0) {
-    const existing = await readSnapshotFile(files[0]);
-    if (existing && snapshotSignature(existing) === snapshotSignature(snapshot)) return;
+  if (!force) {
+    const files = await listDeployFiles();
+    if (files.length > 0) {
+      const existing = await readSnapshotFile(files[0]);
+      if (existing && snapshotSignature(existing) === snapshotSignature(snapshot)) return;
+    }
   }
 
   await fs.mkdir(DEPLOY_DIR, { recursive: true });
@@ -178,16 +181,46 @@ async function appendDeploySnapshot(snapshot: KanbanSnapshot): Promise<void> {
   await pruneDir(await listDeployFiles(), MAX_DEPLOY_FILES);
 }
 
+/** Runs once per process start (each Render deploy). Backs up on-disk data before any writes. */
+export function runDeployBackupOnStartup(): Promise<void> {
+  if (deployBackupPromise) return deployBackupPromise;
+
+  deployBackupPromise = (async () => {
+    if (deployBackupDone) return;
+    try {
+      const main = await readSnapshotFile(DATA_FILE);
+      const backup = await readSnapshotFile(BACKUP_FILE);
+      const current =
+        main && main.tasks.length > 0
+          ? main
+          : backup && backup.tasks.length > 0
+            ? backup
+            : await readFromFile();
+
+      if (!current || current.tasks.length === 0) {
+        console.warn("[kanban] deploy backup skipped: no task data on disk");
+        deployBackupDone = true;
+        return;
+      }
+
+      await appendDeploySnapshot(current, true);
+      await fs.mkdir(DATA_DIR, { recursive: true });
+      await writeSnapshotFile(path.join(DATA_DIR, "kanban.predeploy.json"), current);
+      deployBackupDone = true;
+      console.info(`[kanban] deploy backup: ${current.tasks.length} tasks → history/deploy/ + kanban.predeploy.json`);
+    } catch (error) {
+      deployBackupDone = false;
+      deployBackupPromise = null;
+      console.warn("[kanban] deploy backup failed", error);
+      throw error;
+    }
+  })();
+
+  return deployBackupPromise;
+}
+
 async function ensureDeployBackup(): Promise<void> {
-  if (deployBackupDone) return;
-  deployBackupDone = true;
-  try {
-    const current = await readSnapshotFile(DATA_FILE);
-    if (!current || current.tasks.length === 0) return;
-    await appendDeploySnapshot(current);
-  } catch (error) {
-    console.warn("[kanban] deploy backup failed", error);
-  }
+  await runDeployBackupOnStartup();
 }
 
 async function appendDailySnapshot(snapshot: KanbanSnapshot): Promise<void> {
@@ -429,6 +462,7 @@ async function normalizeSnapshot(snapshot: KanbanSnapshot): Promise<KanbanSnapsh
 }
 
 async function persistSnapshot(snapshot: KanbanSnapshot): Promise<void> {
+  await runDeployBackupOnStartup();
   memorySnapshot = snapshot;
   await enqueuePersist(async () => {
     if (isDatabaseStorageEnabled()) {
