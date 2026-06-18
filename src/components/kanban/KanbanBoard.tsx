@@ -103,24 +103,30 @@ export function KanbanBoard() {
 
   const addToColumn = (col: ColumnId) => {
     const id = uid();
-    setTasks((p) => [
-      ...p,
-      { id, code: nextTaskCode(p), title: "", description: "", assignee: user || "", column: col },
-    ]);
+    setTasks(
+      (p) => [
+        ...p,
+        { id, code: nextTaskCode(p), title: "", description: "", assignee: user || "", column: col },
+      ],
+      { immediate: true },
+    );
     setOpenTaskId(id);
   };
 
   const addToBacklog = () => {
     const id = uid();
-    setTasks((p) => [
-      { id, code: nextTaskCode(p), title: "", description: "", assignee: user || "", column: "backlog" },
-      ...p,
-    ]);
+    setTasks(
+      (p) => [
+        { id, code: nextTaskCode(p), title: "", description: "", assignee: user || "", column: "backlog" },
+        ...p,
+      ],
+      { immediate: true },
+    );
     setOpenTaskId(id);
   };
 
   const sendToTodo = (id: string) =>
-    setTasks((p) => p.map((x) => (x.id === id ? { ...x, column: "todo" } : x)));
+    setTasks((p) => p.map((x) => (x.id === id ? { ...x, column: "todo" } : x)), { immediate: true });
 
   const findContainer = (id: string): ColumnId | null => {
     const t = tasks.find((x) => x.id === id);
@@ -137,7 +143,7 @@ export function KanbanBoard() {
     const activeCol = findContainer(String(active.id));
     const overCol = findContainer(String(over.id));
     if (!activeCol || !overCol || activeCol === overCol) return;
-    setTasks((prev) => prev.map((t) => (t.id === active.id ? { ...t, column: overCol } : t)));
+    setTasks((prev) => prev.map((t) => (t.id === active.id ? { ...t, column: overCol } : t)), { persist: false });
   };
 
   const onDragEnd = (e: DragEndEvent) => {
@@ -157,7 +163,7 @@ export function KanbanBoard() {
       const reordered = arrayMove(inCol, oldIndex, newIndex);
       const others = prev.filter((t) => t.column !== overCol);
       return [...others, ...reordered];
-    });
+    }, { immediate: true });
   };
 
   if (!user) return <Login onLogin={login} />;
@@ -282,11 +288,16 @@ export function KanbanBoard() {
         open={showBacklog}
         onOpenChange={setShowBacklog}
         tasks={backlog}
-        setTasks={(updater) => setTasks((prev) => {
-          const others = prev.filter((t) => t.column !== "backlog");
-          const next = updater(prev.filter((t) => t.column === "backlog")).map((t) => ({ ...t, column: "backlog" as const }));
-          return [...others, ...next];
-        })}
+        setTasks={(updater) =>
+          setTasks((prev) => {
+            const others = prev.filter((t) => t.column !== "backlog");
+            const next = updater(prev.filter((t) => t.column === "backlog")).map((t) => ({
+              ...t,
+              column: "backlog" as const,
+            }));
+            return [...others, ...next];
+          }, { immediate: true })
+        }
         onAdd={addToBacklog}
         onSendToTodo={sendToTodo}
         onOpenTask={setOpenTaskId}

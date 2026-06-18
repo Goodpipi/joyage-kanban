@@ -26,11 +26,20 @@ export function useKanbanSync(enabled: boolean) {
     tasksRef.current = tasks;
   }, [tasks]);
 
+  const hasPendingLocalEdits = useCallback(() => {
+    return dirtyRef.current || savingRef.current || saveTimerRef.current !== null;
+  }, []);
+
   const applySnapshot = useCallback((nextTasks: Task[], nextUpdatedAt: string) => {
     setTasks(nextTasks);
     setUpdatedAt(nextUpdatedAt);
     updatedAtRef.current = nextUpdatedAt;
     tasksRef.current = nextTasks;
+  }, []);
+
+  const bumpUpdatedAt = useCallback((nextUpdatedAt: string) => {
+    setUpdatedAt(nextUpdatedAt);
+    updatedAtRef.current = nextUpdatedAt;
   }, []);
 
   const flushSave = useCallback(async () => {
@@ -40,23 +49,31 @@ export function useKanbanSync(enabled: boolean) {
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
     }
+    const tasksToSave = tasksRef.current;
+    const expectedAt = updatedAtRef.current ?? undefined;
+    const tasksFingerprint = JSON.stringify(tasksToSave);
     try {
       const result = await saveKanbanSnapshotFn({
         data: {
-          tasks: tasksRef.current,
-          expectedUpdatedAt: updatedAtRef.current ?? undefined,
+          tasks: tasksToSave,
+          expectedUpdatedAt: expectedAt,
         },
       });
+      if (JSON.stringify(tasksRef.current) !== tasksFingerprint) {
+        dirtyRef.current = true;
+        return;
+      }
       dirtyRef.current = false;
-      applySnapshot(result.tasks, result.updatedAt);
+      bumpUpdatedAt(result.updatedAt);
       setSyncError(null);
     } catch {
       dirtyRef.current = true;
       setSyncError("保存失败，稍后重试");
     } finally {
       savingRef.current = false;
+      if (dirtyRef.current) void flushSave();
     }
-  }, [applySnapshot]);
+  }, [bumpUpdatedAt]);
 
   const scheduleSave = useCallback(
     (immediate = false) => {
@@ -67,6 +84,7 @@ export function useKanbanSync(enabled: boolean) {
         return;
       }
       saveTimerRef.current = setTimeout(() => {
+        saveTimerRef.current = null;
         void flushSave();
       }, SAVE_DEBOUNCE_MS);
     },
@@ -74,17 +92,24 @@ export function useKanbanSync(enabled: boolean) {
   );
 
   const refresh = useCallback(async () => {
-    if (dirtyRef.current || savingRef.current) return;
+    if (hasPendingLocalEdits()) return;
+    const tasksBeforeFetch = tasksRef.current;
+    const updatedAtBeforeFetch = updatedAtRef.current;
     try {
       const snapshot = await getKanbanSnapshot();
-      if (snapshot.updatedAt !== updatedAtRef.current) {
-        const local = tasksRef.current;
-        const merged = local.length === 0 ? snapshot.tasks : mergeKanbanTasks(snapshot.tasks, local);
-        applySnapshot(merged, snapshot.updatedAt);
-        if (local.length > 0 && JSON.stringify(merged) !== JSON.stringify(snapshot.tasks)) {
-          dirtyRef.current = true;
-          scheduleSave(true);
-        }
+      if (hasPendingLocalEdits()) return;
+      if (JSON.stringify(tasksRef.current) !== JSON.stringify(tasksBeforeFetch)) return;
+      if (snapshot.updatedAt === updatedAtBeforeFetch) return;
+
+      const local = tasksRef.current;
+      const merged = local.length === 0 ? snapshot.tasks : mergeKanbanTasks(snapshot.tasks, local);
+      if (hasPendingLocalEdits()) return;
+      if (JSON.stringify(tasksRef.current) !== JSON.stringify(tasksBeforeFetch)) return;
+
+      applySnapshot(merged, snapshot.updatedAt);
+      if (local.length > 0 && JSON.stringify(merged) !== JSON.stringify(snapshot.tasks)) {
+        dirtyRef.current = true;
+        scheduleSave(true);
       }
       setSyncError(null);
     } catch {
@@ -92,15 +117,19 @@ export function useKanbanSync(enabled: boolean) {
     } finally {
       setReady(true);
     }
-  }, [applySnapshot, scheduleSave]);
+  }, [applySnapshot, hasPendingLocalEdits, scheduleSave]);
 
   const setTasksAndSave = useCallback(
-    (updater: Task[] | ((prev: Task[]) => Task[]), options?: { immediate?: boolean }) => {
+    (updater: Task[] | ((prev: Task[]) => Task[]), options?: { immediate?: boolean; persist?: boolean }) => {
       setTasks((prev) => {
         const next = typeof updater === "function" ? updater(prev) : updater;
         tasksRef.current = next;
         return next;
       });
+      if (options?.persist === false) {
+        dirtyRef.current = true;
+        return;
+      }
       scheduleSave(options?.immediate);
     },
     [scheduleSave],
