@@ -140,11 +140,22 @@ function enqueuePersist(work: () => Promise<void>): Promise<void> {
   return persistChain;
 }
 
-async function maybeAppendSaveHistory(snapshot: KanbanSnapshot): Promise<void> {
+async function maybeAppendSaveHistoryFromFile(): Promise<void> {
   const now = Date.now();
   if (now - lastSaveHistoryAt < SAVE_HISTORY_THROTTLE_MS) return;
   lastSaveHistoryAt = now;
-  await appendHistorySnapshot(snapshot, "save");
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const file = path.join(HISTORY_DIR, `${stamp}-save.json`);
+  if (await copyLiveDataTo(file)) {
+    await pruneDir(await listHistoryFiles(), MAX_HISTORY_FILES);
+  }
+}
+
+async function appendDailySnapshotFromFile(): Promise<void> {
+  const day = new Date().toISOString().slice(0, 10);
+  const file = path.join(DAILY_DIR, `${day}.json`);
+  await copyLiveDataTo(file);
+  await pruneDir(await listDailyFiles(), MAX_DAILY_FILES);
 }
 
 async function appendHistorySnapshot(snapshot: KanbanSnapshot, tag = "save"): Promise<void> {
@@ -163,51 +174,50 @@ async function appendHistorySnapshot(snapshot: KanbanSnapshot, tag = "save"): Pr
   await pruneDir(await listHistoryFiles(), MAX_HISTORY_FILES);
 }
 
-async function appendDeploySnapshot(snapshot: KanbanSnapshot, force = false): Promise<void> {
-  if (snapshot.tasks.length === 0) return;
-
-  if (!force) {
-    const files = await listDeployFiles();
-    if (files.length > 0) {
-      const existing = await readSnapshotFile(files[0]);
-      if (existing && snapshotSignature(existing) === snapshotSignature(snapshot)) return;
+async function pickLiveDataFile(): Promise<string | null> {
+  for (const file of [DATA_FILE, BACKUP_FILE]) {
+    try {
+      const stat = await fs.stat(file);
+      if (stat.size > 64) return file;
+    } catch {
+      // missing file
     }
   }
-
-  await fs.mkdir(DEPLOY_DIR, { recursive: true });
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const file = path.join(DEPLOY_DIR, `${stamp}-${snapshot.tasks.length}tasks-deploy.json`);
-  await writeSnapshotFile(file, snapshot);
-  await pruneDir(await listDeployFiles(), MAX_DEPLOY_FILES);
+  return null;
 }
 
-/** Runs once per process start (each Render deploy). Backs up on-disk data before any writes. */
+async function copyLiveDataTo(file: string): Promise<boolean> {
+  const source = await pickLiveDataFile();
+  if (!source) return false;
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.copyFile(source, file);
+  return true;
+}
+
+/** Runs once per process start (each Render deploy). File copy only — no JSON parse. */
 export function runDeployBackupOnStartup(): Promise<void> {
   if (deployBackupPromise) return deployBackupPromise;
 
   deployBackupPromise = (async () => {
     if (deployBackupDone) return;
     try {
-      const main = await readSnapshotFile(DATA_FILE);
-      const backup = await readSnapshotFile(BACKUP_FILE);
-      const current =
-        main && main.tasks.length > 0
-          ? main
-          : backup && backup.tasks.length > 0
-            ? backup
-            : await readFromFile();
-
-      if (!current || current.tasks.length === 0) {
-        console.warn("[kanban] deploy backup skipped: no task data on disk");
+      const source = await pickLiveDataFile();
+      if (!source) {
+        console.warn("[kanban] deploy backup skipped: no data file on disk");
         deployBackupDone = true;
         return;
       }
 
-      await appendDeploySnapshot(current, true);
-      await fs.mkdir(DATA_DIR, { recursive: true });
-      await writeSnapshotFile(path.join(DATA_DIR, "kanban.predeploy.json"), current);
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const deployFile = path.join(DEPLOY_DIR, `${stamp}-deploy.json`);
+      await fs.mkdir(DEPLOY_DIR, { recursive: true });
+      await fs.copyFile(source, deployFile);
+      await fs.copyFile(source, path.join(DATA_DIR, "kanban.predeploy.json"));
+      await pruneDir(await listDeployFiles(), MAX_DEPLOY_FILES);
+
+      const { size } = await fs.stat(source);
       deployBackupDone = true;
-      console.info(`[kanban] deploy backup: ${current.tasks.length} tasks → history/deploy/ + kanban.predeploy.json`);
+      console.info(`[kanban] deploy backup: copied ${size} bytes → history/deploy/ + kanban.predeploy.json`);
     } catch (error) {
       deployBackupDone = false;
       deployBackupPromise = null;
@@ -249,16 +259,17 @@ export function ensureAutoHistoryScheduler(): void {
     if (now - lastAutoSnapshotAt < AUTO_SNAPSHOT_MS - 5000) return;
     lastAutoSnapshotAt = now;
     try {
-      const current = await readSnapshotFile(DATA_FILE);
-      if (!current || current.tasks.length === 0) return;
-      await appendHistorySnapshot(current, "auto");
-      await appendDailySnapshot(current);
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const file = path.join(HISTORY_DIR, `${stamp}-auto.json`);
+      if (await copyLiveDataTo(file)) {
+        await pruneDir(await listHistoryFiles(), MAX_HISTORY_FILES);
+      }
+      await appendDailySnapshotFromFile();
     } catch (error) {
       console.warn("[kanban] auto history snapshot failed", error);
     }
   };
 
-  void tick();
   setInterval(() => {
     void tick();
   }, AUTO_SNAPSHOT_MS);
@@ -382,9 +393,10 @@ export async function restoreKanbanFromSource(source: string): Promise<KanbanSna
     throw new Error("Snapshot is empty or unreadable");
   }
 
-  const current = await readSnapshotFile(DATA_FILE);
-  if (current && current.tasks.length > 0) {
-    await appendHistorySnapshot(current, "before-restore");
+  const source = await pickLiveDataFile();
+  if (source) {
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    await copyLiveDataTo(path.join(HISTORY_DIR, `${stamp}-before-restore.json`));
   }
 
   return await replaceKanbanSnapshot(snapshot.tasks);
@@ -426,9 +438,9 @@ async function writeToFile(snapshot: KanbanSnapshot): Promise<void> {
   await fs.writeFile(DATA_FILE, payload, "utf-8");
 
   if (snapshot.tasks.length > 0) {
-    await fs.writeFile(BACKUP_FILE, payload, "utf-8");
-    await maybeAppendSaveHistory(snapshot);
-    await appendDailySnapshot(snapshot);
+    await fs.copyFile(DATA_FILE, BACKUP_FILE);
+    await maybeAppendSaveHistoryFromFile();
+    await appendDailySnapshotFromFile();
   }
 }
 

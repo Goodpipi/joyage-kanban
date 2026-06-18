@@ -7,7 +7,7 @@ services:
     repo: https://github.com/Goodpipi/joyage-kanban
     branch: main
     buildCommand: npm install --include=dev && npm run build
-    startCommand: npm start
+    startCommand: node --max-old-space-size=384 .output/server/index.mjs
     healthCheckPath: /
     autoDeploy: true
     envVars:
