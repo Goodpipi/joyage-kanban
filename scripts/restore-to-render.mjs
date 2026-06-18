@@ -1,7 +1,36 @@
+/**
+ * DEV-ONLY emergency script — writes local JSON backup TO PRODUCTION.
+ * Never run this during normal development. Local demo data must stay local.
+ *
+ * Required env vars:
+ *   KANBAN_ALLOW_REMOTE_WRITE=1
+ *   KANBAN_CONFIRM_PRODUCTION=joyage-kanban
+ */
 import { readFileSync } from "node:fs";
 import { fromCrossJSON, toJSONAsync } from "seroval";
 
 const BASE = process.env.KANBAN_URL ?? "https://joyage-kanban.onrender.com";
+
+function assertRemoteWriteAllowed() {
+  if (process.env.KANBAN_ALLOW_REMOTE_WRITE !== "1") {
+    console.error(
+      "BLOCKED: This script writes to production. Set KANBAN_ALLOW_REMOTE_WRITE=1 only when you intentionally restore production data.",
+    );
+    process.exit(1);
+  }
+  if (process.env.KANBAN_CONFIRM_PRODUCTION !== "joyage-kanban") {
+    console.error(
+      "BLOCKED: Set KANBAN_CONFIRM_PRODUCTION=joyage-kanban to confirm the target service.",
+    );
+    process.exit(1);
+  }
+  if (BASE.includes("localhost") || BASE.includes("127.0.0.1")) {
+    console.error("BLOCKED: Target URL looks local — use production URL only for intentional restores.");
+    process.exit(1);
+  }
+}
+
+assertRemoteWriteAllowed();
 const backupPath = process.argv[2] ?? "backups/post-deploy-2026-06-16.json";
 
 const SAVE_FN_IDS = [

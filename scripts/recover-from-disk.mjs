@@ -1,3 +1,7 @@
+/**
+ * Read-only scan of production disk snapshots via API. Does not push local data.
+ * For emergency recovery on the server itself — not for syncing local demo to prod.
+ */
 import { fromCrossJSON, toJSONAsync } from "seroval";
 
 const BASE = process.env.KANBAN_URL ?? "https://joyage-kanban.onrender.com";

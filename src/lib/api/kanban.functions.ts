@@ -2,12 +2,15 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 import {
+  listKanbanHistory,
   loadKanbanSnapshot,
   recoverBestKanbanSnapshot,
   replaceKanbanSnapshot,
+  restoreKanbanFromSource,
   saveKanbanSnapshot,
   scanDiskKanbanSnapshots,
 } from "@/lib/api/kanban-store.server";
+import { getKanbanRuntimeInfo } from "@/lib/api/kanban-env.server";
 
 const tagIdSchema = z.enum(["dev", "other"]);
 const columnIdSchema = z.enum(["todo", "in-progress", "testing", "done", "backlog", "archived"]);
@@ -62,4 +65,18 @@ export const scanKanbanDiskFn = createServerFn({ method: "POST" }).handler(async
 
 export const recoverKanbanFromDiskFn = createServerFn({ method: "POST" }).handler(async () => {
   return await recoverBestKanbanSnapshot();
+});
+
+export const listKanbanHistoryFn = createServerFn({ method: "POST" }).handler(async () => {
+  return await listKanbanHistory();
+});
+
+export const restoreKanbanHistoryFn = createServerFn({ method: "POST" })
+  .validator(z.object({ source: z.string() }))
+  .handler(async ({ data }) => {
+    return await restoreKanbanFromSource(data.source);
+  });
+
+export const getKanbanStorageInfoFn = createServerFn({ method: "POST" }).handler(async () => {
+  return getKanbanRuntimeInfo();
 });
