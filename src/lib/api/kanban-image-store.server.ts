@@ -38,6 +38,7 @@ export function isKanbanImageApiPath(pathname: string): boolean {
 export async function serveKanbanImage(pathname: string): Promise<Response | null> {
   if (!isKanbanImageApiPath(pathname)) return null;
   const name = path.basename(pathname);
+  if (name === "upload") return null;
   if (!SAFE_IMAGE_NAME.test(name)) {
     return new Response("Not found", { status: 404 });
   }
@@ -174,6 +175,31 @@ export async function uploadImageFromDataUrl(dataUrl: string): Promise<string> {
 async function externalizeImageValue(value: string): Promise<string> {
   if (!value.startsWith("data:image")) return value;
   return saveDataUrl(value);
+}
+
+/** POST /api/kanban/images/upload — multipart file upload (no base64 in JSON). */
+export async function handleKanbanImageUpload(request: Request): Promise<Response | null> {
+  const { pathname } = new URL(request.url);
+  if (pathname !== `${IMAGE_REF_PREFIX}upload` || request.method !== "POST") return null;
+
+  const file = (await request.formData()).get("file");
+  if (!(file instanceof File)) {
+    return Response.json({ error: "Missing file" }, { status: 400 });
+  }
+  if (!file.type.startsWith("image/")) {
+    return Response.json({ error: "Not an image" }, { status: 400 });
+  }
+  if (file.size > MAX_IMAGE_BYTES) {
+    return Response.json({ error: "File exceeds 10MB limit" }, { status: 400 });
+  }
+
+  const ext = mimeToExt(file.type.slice("image/".length));
+  const filename = `${crypto.randomUUID()}.${ext}`;
+  await fs.mkdir(IMAGES_DIR, { recursive: true });
+  await fs.writeFile(path.join(IMAGES_DIR, filename), Buffer.from(await file.arrayBuffer()));
+
+  const url = `${IMAGE_REF_PREFIX}${filename}`;
+  return Response.json({ url });
 }
 
 /** Move embedded data URLs in tasks to files; JSON keeps only /api/kanban/images/... refs. */

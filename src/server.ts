@@ -1,6 +1,6 @@
 import "./lib/error-capture";
 
-import { serveKanbanImage } from "./lib/api/kanban-image-store.server";
+import { handleKanbanImageUpload, serveKanbanImage } from "./lib/api/kanban-image-store.server";
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 
@@ -41,6 +41,9 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
+      const uploadResponse = await handleKanbanImageUpload(request);
+      if (uploadResponse) return uploadResponse;
+
       const imageResponse = await serveKanbanImage(new URL(request.url).pathname);
       if (imageResponse) return imageResponse;
 

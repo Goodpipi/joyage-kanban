@@ -10,7 +10,6 @@ import {
   saveKanbanSnapshot,
   scanDiskKanbanSnapshots,
 } from "@/lib/api/kanban-store.server";
-import { uploadImageFromDataUrl } from "@/lib/api/kanban-image-store.server";
 import { getKanbanRuntimeInfo } from "@/lib/api/kanban-env.server";
 
 const tagIdSchema = z.enum(["dev", "other"]);
@@ -81,10 +80,3 @@ export const restoreKanbanHistoryFn = createServerFn({ method: "POST" })
 export const getKanbanStorageInfoFn = createServerFn({ method: "POST" }).handler(async () => {
   return getKanbanRuntimeInfo();
 });
-
-export const uploadKanbanImageFn = createServerFn({ method: "POST" })
-  .validator(z.object({ dataUrl: z.string().min(1) }))
-  .handler(async ({ data }) => {
-    const url = await uploadImageFromDataUrl(data.dataUrl);
-    return { url };
-  });
