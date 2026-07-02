@@ -1,9 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { externalizeTaskImages, IMAGES_DIR, migrateEmbeddedImagesInJsonFile } from "@/lib/api/kanban-image-store.server";
+import { externalizeTaskImages, IMAGES_DIR, migrateEmbeddedImagesInJsonFile, pruneUnreferencedImages } from "@/lib/api/kanban-image-store.server";
 import { KANBAN_SEED } from "@/lib/kanban-seed";
-import { ensureTaskCodes, mergeKanbanTasks, type Task } from "@/lib/kanban-types";
+import { ensureTaskCodes, mergeKanbanTasks, type CustomTag, type Task } from "@/lib/kanban-types";
 import {
   isDatabaseStorageEnabled,
   readFromDatabase,
@@ -13,6 +13,7 @@ import {
 export interface KanbanSnapshot {
   tasks: Task[];
   updatedAt: string;
+  customTags?: CustomTag[];
 }
 
 export type KanbanStorageMode = "database" | "disk" | "file";
@@ -29,7 +30,7 @@ const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), ".data");
 const DATA_FILE = path.join(DATA_DIR, "kanban.json");
 const BACKUP_FILE = path.join(DATA_DIR, "kanban.backup.json");
 const DEPLOY_DIR = path.join(DATA_DIR, "history", "deploy");
-const MAX_DEPLOY_FILES = Number(process.env.KANBAN_DEPLOY_MAX ?? 5);
+const MAX_DEPLOY_FILES = Number(process.env.KANBAN_DEPLOY_MAX ?? 3);
 
 let memorySnapshot: KanbanSnapshot | null = null;
 let deployBackupDone = false;
@@ -43,12 +44,11 @@ function isNewer(a: string, b: string): boolean {
 }
 
 function isValidSnapshot(parsed: unknown): parsed is KanbanSnapshot {
-  return (
-    !!parsed &&
-    typeof parsed === "object" &&
-    Array.isArray((parsed as KanbanSnapshot).tasks) &&
-    typeof (parsed as KanbanSnapshot).updatedAt === "string"
-  );
+  if (!parsed || typeof parsed !== "object") return false;
+  const s = parsed as KanbanSnapshot;
+  if (!Array.isArray(s.tasks) || typeof s.updatedAt !== "string") return false;
+  if (s.customTags !== undefined && !Array.isArray(s.customTags)) return false;
+  return true;
 }
 
 function pickBestSnapshot(snapshots: KanbanSnapshot[]): KanbanSnapshot | null {
@@ -227,7 +227,7 @@ async function readFromFile(): Promise<KanbanSnapshot | null> {
 }
 
 function seedSnapshot(): KanbanSnapshot {
-  return { tasks: KANBAN_SEED, updatedAt: new Date().toISOString() };
+  return { tasks: KANBAN_SEED, updatedAt: new Date().toISOString(), customTags: [] };
 }
 
 function mergeSnapshots(a: KanbanSnapshot | null, b: KanbanSnapshot | null): KanbanSnapshot | null {
@@ -245,7 +245,7 @@ export function getKanbanStorageMode(): KanbanStorageMode {
 async function normalizeSnapshot(snapshot: KanbanSnapshot): Promise<KanbanSnapshot> {
   const { tasks, changed } = ensureTaskCodes(snapshot.tasks);
   if (!changed) return snapshot;
-  const migrated: KanbanSnapshot = { tasks, updatedAt: new Date().toISOString() };
+  const migrated: KanbanSnapshot = { ...snapshot, tasks, updatedAt: new Date().toISOString() };
   memorySnapshot = migrated;
   try {
     await persistSnapshot(migrated);
@@ -274,6 +274,7 @@ async function persistSnapshot(snapshot: KanbanSnapshot): Promise<void> {
       if (stored.tasks.length > 0) {
         await fs.copyFile(DATA_FILE, BACKUP_FILE);
       }
+      await pruneUnreferencedImages(stored.tasks);
     }
   });
 }
@@ -447,6 +448,7 @@ export async function replaceKanbanSnapshot(tasks: Task[]): Promise<KanbanSnapsh
 export async function saveKanbanSnapshot(
   tasks: Task[],
   expectedUpdatedAt?: string,
+  customTags?: CustomTag[],
 ): Promise<KanbanSnapshot> {
   const current = await ensureMemorySnapshot();
   if (tasks.length === 0 && current.tasks.length > 0) {
@@ -461,6 +463,7 @@ export async function saveKanbanSnapshot(
   const snapshot: KanbanSnapshot = {
     tasks: ensureTaskCodes(mergedTasks).tasks,
     updatedAt: new Date().toISOString(),
+    customTags: customTags ?? current.customTags ?? [],
   };
   try {
     await persistSnapshot(snapshot);

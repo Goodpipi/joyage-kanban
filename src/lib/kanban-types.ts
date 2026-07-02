@@ -1,7 +1,14 @@
 export type ColumnId = "todo" | "in-progress" | "testing" | "done";
-export type TagId = "dev" | "other";
+export type TagId = string;
+export type Priority = "low" | "medium" | "high" | "urgent";
 export type TaskColumn = ColumnId | "backlog" | "archived";
 export type ActiveColumn = ColumnId | "backlog";
+
+export interface CustomTag {
+  id: string;
+  label: string;
+  className: string;
+}
 
 export interface TaskComment {
   id: string;
@@ -20,6 +27,7 @@ export interface Task {
   dueDate?: string; // ISO
   assignee: string;
   tags?: TagId[];
+  priority?: Priority;
   comments?: TaskComment[];
   column: TaskColumn;
   archivedFrom?: ActiveColumn;
@@ -32,10 +40,62 @@ export const COLUMNS: { id: ColumnId; title: string; hint: string }[] = [
   { id: "done", title: "Done", hint: "Shipped" },
 ];
 
-export const TAG_OPTIONS: { id: TagId; label: string; className: string }[] = [
+export const TAG_OPTIONS: CustomTag[] = [
   { id: "dev", label: "开发任务", className: "bg-sky-100 text-sky-700 ring-1 ring-sky-200" },
   { id: "other", label: "其他任务", className: "bg-primary-soft text-primary ring-1 ring-primary/20" },
 ];
+
+export const PRIORITY_OPTIONS: { id: Priority; label: string; className: string; weight: number }[] = [
+  { id: "low", label: "低", className: "bg-slate-100 text-slate-600 ring-1 ring-slate-200", weight: 1 },
+  { id: "medium", label: "中", className: "bg-blue-100 text-blue-700 ring-1 ring-blue-200", weight: 2 },
+  { id: "high", label: "高", className: "bg-amber-100 text-amber-800 ring-1 ring-amber-200", weight: 3 },
+  { id: "urgent", label: "紧急", className: "bg-red-100 text-red-700 ring-1 ring-red-200", weight: 4 },
+];
+
+export const CUSTOM_TAG_PALETTE = [
+  "bg-violet-100 text-violet-700 ring-1 ring-violet-200",
+  "bg-orange-100 text-orange-700 ring-1 ring-orange-200",
+  "bg-teal-100 text-teal-700 ring-1 ring-teal-200",
+  "bg-fuchsia-100 text-fuchsia-700 ring-1 ring-fuchsia-200",
+  "bg-lime-100 text-lime-800 ring-1 ring-lime-200",
+];
+
+export function resolveTagOptions(customTags: CustomTag[] = []): CustomTag[] {
+  const seen = new Set<string>();
+  const out: CustomTag[] = [];
+  for (const t of [...TAG_OPTIONS, ...customTags]) {
+    if (seen.has(t.id)) continue;
+    seen.add(t.id);
+    out.push(t);
+  }
+  return out;
+}
+
+export function priorityWeight(priority?: Priority): number {
+  return PRIORITY_OPTIONS.find((p) => p.id === priority)?.weight ?? 0;
+}
+
+function startOfDay(d: Date): Date {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+export function isTaskDueToday(task: Task): boolean {
+  if (!task.dueDate || task.column === "archived" || task.column === "done") return false;
+  return startOfDay(new Date(task.dueDate)).getTime() === startOfDay(new Date()).getTime();
+}
+
+export function isTaskOverdue(task: Task): boolean {
+  if (!task.dueDate || task.column === "archived" || task.column === "done") return false;
+  const due = new Date(task.dueDate);
+  due.setHours(23, 59, 59, 999);
+  return due < new Date();
+}
+
+export function sortTasksByPriority(tasks: Task[]): Task[] {
+  return [...tasks].sort((a, b) => priorityWeight(b.priority) - priorityWeight(a.priority));
+}
 
 export const uid = () => Math.random().toString(36).slice(2, 10);
 

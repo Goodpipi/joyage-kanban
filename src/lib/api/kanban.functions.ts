@@ -12,7 +12,13 @@ import {
 } from "@/lib/api/kanban-store.server";
 import { getKanbanRuntimeInfo } from "@/lib/api/kanban-env.server";
 
-const tagIdSchema = z.enum(["dev", "other"]);
+const tagIdSchema = z.string();
+const prioritySchema = z.enum(["low", "medium", "high", "urgent"]);
+const customTagSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  className: z.string(),
+});
 const columnIdSchema = z.enum(["todo", "in-progress", "testing", "done", "backlog", "archived"]);
 const activeColumnSchema = z.enum(["todo", "in-progress", "testing", "done", "backlog"]);
 
@@ -33,6 +39,7 @@ const taskSchema = z.object({
   dueDate: z.string().optional(),
   assignee: z.string(),
   tags: z.array(tagIdSchema).optional(),
+  priority: prioritySchema.optional(),
   comments: z.array(taskCommentSchema).optional(),
   column: columnIdSchema,
   archivedFrom: activeColumnSchema.optional(),
@@ -47,10 +54,11 @@ export const saveKanbanSnapshotFn = createServerFn({ method: "POST" })
     z.object({
       tasks: z.array(taskSchema),
       expectedUpdatedAt: z.string().optional(),
+      customTags: z.array(customTagSchema).optional(),
     }),
   )
   .handler(async ({ data }) => {
-    return await saveKanbanSnapshot(data.tasks, data.expectedUpdatedAt);
+    return await saveKanbanSnapshot(data.tasks, data.expectedUpdatedAt, data.customTags);
   });
 
 export const restoreKanbanSnapshotFn = createServerFn({ method: "POST" })

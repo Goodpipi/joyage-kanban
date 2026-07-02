@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
-import { Calendar as CalendarIcon, ImagePlus, Send, Tag as TagIcon, Trash2, X } from "lucide-react";
+import { Calendar as CalendarIcon, ImagePlus, Plus, Send, Tag as TagIcon, Trash2, X } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
@@ -8,8 +8,16 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import {
-  TAG_OPTIONS, avatarColor, uid,
-  type Task, type TagId, type TaskComment,
+  CUSTOM_TAG_PALETTE,
+  PRIORITY_OPTIONS,
+  avatarColor,
+  resolveTagOptions,
+  uid,
+  type CustomTag,
+  type Priority,
+  type Task,
+  type TagId,
+  type TaskComment,
 } from "@/lib/kanban-types";
 import { uploadImagesFromClipboard, uploadKanbanImageFile } from "@/lib/kanban-image-client";
 import { ClickableImageThumbnail, ImagePreviewDialog } from "@/components/kanban/ImagePreviewDialog";
@@ -21,13 +29,16 @@ interface Props {
   onOpenChange: (v: boolean) => void;
   onChange: (t: Task) => void;
   currentUser: string;
+  customTags?: CustomTag[];
+  onAddCustomTag?: (tag: CustomTag) => void;
 }
 
-export function TaskDetailDialog({ task, open, onOpenChange, onChange, currentUser }: Props) {
+export function TaskDetailDialog({ task, open, onOpenChange, onChange, currentUser, customTags = [], onAddCustomTag }: Props) {
   const [draft, setDraft] = useState<Task | null>(task);
   const [commentText, setCommentText] = useState("");
   const [commentImages, setCommentImages] = useState<string[]>([]);
   const [preview, setPreview] = useState<{ images: string[]; index: number } | null>(null);
+  const [newTagLabel, setNewTagLabel] = useState("");
   const descFileRef = useRef<HTMLInputElement>(null);
   const commentFileRef = useRef<HTMLInputElement>(null);
 
@@ -47,9 +58,24 @@ export function TaskDetailDialog({ task, open, onOpenChange, onChange, currentUs
   };
 
   const toggleTag = (id: TagId) => {
-    const current = draft.tags?.[0];
-    update({ tags: current === id ? [] : [id] });
+    const current = draft.tags || [];
+    update({
+      tags: current.includes(id) ? current.filter((t) => t !== id) : [...current, id],
+    });
   };
+
+  const addCustomTag = () => {
+    const label = newTagLabel.trim();
+    if (!label) return;
+    const id = `custom-${uid()}`;
+    const className = CUSTOM_TAG_PALETTE[customTags.length % CUSTOM_TAG_PALETTE.length];
+    const tag: CustomTag = { id, label, className };
+    onAddCustomTag?.(tag);
+    update({ tags: [...(draft.tags || []), id] });
+    setNewTagLabel("");
+  };
+
+  const allTags = resolveTagOptions(customTags);
 
   const onDescPaste = async (e: React.ClipboardEvent) => {
     const imgs = await uploadImagesFromClipboard(e);
@@ -119,7 +145,7 @@ export function TaskDetailDialog({ task, open, onOpenChange, onChange, currentUs
           <p className="mt-1 font-mono text-xs font-semibold tracking-wide text-primary">{draft.code}</p>
 
           {/* Meta row */}
-          <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+          <div className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
             <div>
               <label className="text-xs font-medium text-muted-foreground">Assignee</label>
               <Input
@@ -148,6 +174,26 @@ export function TaskDetailDialog({ task, open, onOpenChange, onChange, currentUs
                 </PopoverContent>
               </Popover>
             </div>
+            <div className="sm:col-span-1">
+              <label className="text-xs font-medium text-muted-foreground">优先级</label>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {PRIORITY_OPTIONS.map((p) => {
+                  const active = draft.priority === p.id;
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => update({ priority: active ? undefined : p.id as Priority })}
+                      className={cn(
+                        "rounded-full px-2.5 py-1 text-[11px] font-medium transition",
+                        active ? p.className : "glass-soft text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {p.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
 
           {/* Tags */}
@@ -156,7 +202,7 @@ export function TaskDetailDialog({ task, open, onOpenChange, onChange, currentUs
               <TagIcon className="h-3 w-3" /> Tags
             </label>
             <div className="mt-2 flex flex-wrap gap-2">
-              {TAG_OPTIONS.map((t) => {
+              {allTags.map((t) => {
                 const active = (draft.tags || []).includes(t.id);
                 return (
                   <button
@@ -171,6 +217,18 @@ export function TaskDetailDialog({ task, open, onOpenChange, onChange, currentUs
                   </button>
                 );
               })}
+            </div>
+            <div className="mt-2 flex gap-2">
+              <Input
+                value={newTagLabel}
+                onChange={(e) => setNewTagLabel(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustomTag(); } }}
+                placeholder="新建自定义标签…"
+                className="glass-soft h-8 border-0 text-xs"
+              />
+              <Button type="button" size="sm" variant="outline" onClick={addCustomTag} className="h-8 gap-1 px-2">
+                <Plus className="h-3.5 w-3.5" /> 添加
+              </Button>
             </div>
           </div>
 

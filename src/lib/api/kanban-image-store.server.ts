@@ -238,3 +238,40 @@ export async function externalizeTaskImages(tasks: Task[]): Promise<{ tasks: Tas
   );
   return { tasks: next, changed };
 }
+
+/** Collect image filenames still referenced by tasks. */
+export function collectReferencedImageNames(tasks: Task[]): Set<string> {
+  const names = new Set<string>();
+  const addRef = (src: string) => {
+    if (!src.startsWith(IMAGE_REF_PREFIX)) return;
+    const name = path.basename(src);
+    if (SAFE_IMAGE_NAME.test(name)) names.add(name);
+  };
+  for (const task of tasks) {
+    for (const src of task.descriptionImages ?? []) addRef(src);
+    for (const c of task.comments ?? []) {
+      for (const src of c.images) addRef(src);
+    }
+  }
+  return names;
+}
+
+/** Delete image files in IMAGES_DIR that no task references. */
+export async function pruneUnreferencedImages(tasks: Task[]): Promise<number> {
+  const referenced = collectReferencedImageNames(tasks);
+  let removed = 0;
+  try {
+    const entries = await fs.readdir(IMAGES_DIR);
+    for (const name of entries) {
+      if (!SAFE_IMAGE_NAME.test(name) || referenced.has(name)) continue;
+      await fs.unlink(path.join(IMAGES_DIR, name)).catch(() => {});
+      removed++;
+    }
+  } catch {
+    // images dir may not exist yet
+  }
+  if (removed > 0) {
+    console.info(`[kanban] pruned ${removed} unreferenced image(s)`);
+  }
+  return removed;
+}

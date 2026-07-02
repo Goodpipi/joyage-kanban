@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getKanbanSnapshot, saveKanbanSnapshotFn } from "@/lib/api/kanban.functions";
-import { mergeKanbanTasks, type Task } from "@/lib/kanban-types";
+import { mergeKanbanTasks, type CustomTag, type Task } from "@/lib/kanban-types";
 
 const POLL_MS = 8000;
 const SAVE_DEBOUNCE_MS = 800;
@@ -12,12 +12,14 @@ function tasksFingerprint(tasks: Task[]): string {
 
 export function useKanbanSync(enabled: boolean) {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [customTags, setCustomTags] = useState<CustomTag[]>([]);
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
 
   const updatedAtRef = useRef<string | null>(null);
   const tasksRef = useRef<Task[]>([]);
+  const customTagsRef = useRef<CustomTag[]>([]);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savingRef = useRef(false);
   const dirtyRef = useRef(false);
@@ -30,15 +32,21 @@ export function useKanbanSync(enabled: boolean) {
     tasksRef.current = tasks;
   }, [tasks]);
 
+  useEffect(() => {
+    customTagsRef.current = customTags;
+  }, [customTags]);
+
   const hasPendingLocalEdits = useCallback(() => {
     return dirtyRef.current || savingRef.current || saveTimerRef.current !== null;
   }, []);
 
-  const applySnapshot = useCallback((nextTasks: Task[], nextUpdatedAt: string) => {
+  const applySnapshot = useCallback((nextTasks: Task[], nextCustomTags: CustomTag[], nextUpdatedAt: string) => {
     setTasks(nextTasks);
+    setCustomTags(nextCustomTags);
     setUpdatedAt(nextUpdatedAt);
     updatedAtRef.current = nextUpdatedAt;
     tasksRef.current = nextTasks;
+    customTagsRef.current = nextCustomTags;
   }, []);
 
   const bumpUpdatedAt = useCallback((nextUpdatedAt: string) => {
@@ -54,6 +62,7 @@ export function useKanbanSync(enabled: boolean) {
       saveTimerRef.current = null;
     }
     const tasksToSave = tasksRef.current;
+    const tagsToSave = customTagsRef.current;
     const expectedAt = updatedAtRef.current ?? undefined;
     const tasksFingerprintAtSave = tasksFingerprint(tasksToSave);
     try {
@@ -61,6 +70,7 @@ export function useKanbanSync(enabled: boolean) {
         data: {
           tasks: tasksToSave,
           expectedUpdatedAt: expectedAt,
+          customTags: tagsToSave,
         },
       });
       if (tasksFingerprint(tasksRef.current) !== tasksFingerprintAtSave) {
@@ -69,6 +79,10 @@ export function useKanbanSync(enabled: boolean) {
       }
       dirtyRef.current = false;
       bumpUpdatedAt(result.updatedAt);
+      if (result.customTags) {
+        setCustomTags(result.customTags);
+        customTagsRef.current = result.customTags;
+      }
       setSyncError(null);
     } catch {
       dirtyRef.current = true;
@@ -110,7 +124,7 @@ export function useKanbanSync(enabled: boolean) {
       if (hasPendingLocalEdits()) return;
       if (tasksFingerprint(tasksRef.current) !== tasksBeforeFetch) return;
 
-      applySnapshot(merged, snapshot.updatedAt);
+      applySnapshot(merged, snapshot.customTags ?? [], snapshot.updatedAt);
       if (local.length > 0 && tasksFingerprint(merged) !== tasksFingerprint(snapshot.tasks)) {
         dirtyRef.current = true;
         scheduleSave(true);
@@ -139,6 +153,18 @@ export function useKanbanSync(enabled: boolean) {
     [scheduleSave],
   );
 
+  const setCustomTagsAndSave = useCallback(
+    (updater: CustomTag[] | ((prev: CustomTag[]) => CustomTag[])) => {
+      setCustomTags((prev) => {
+        const next = typeof updater === "function" ? updater(prev) : updater;
+        customTagsRef.current = next;
+        return next;
+      });
+      scheduleSave();
+    },
+    [scheduleSave],
+  );
+
   useEffect(() => {
     if (!enabled) return;
     void refresh();
@@ -152,5 +178,5 @@ export function useKanbanSync(enabled: boolean) {
     };
   }, [enabled, refresh, flushSave]);
 
-  return { tasks, setTasks: setTasksAndSave, ready, syncError, refresh };
+  return { tasks, customTags, setTasks: setTasksAndSave, setCustomTags: setCustomTagsAndSave, ready, syncError, refresh };
 }

@@ -18,7 +18,7 @@ services:
       - key: DATA_DIR
         value: /var/data
       - key: KANBAN_DEPLOY_MAX
-        value: "5"
+        value: "3"
     disk:
       name: kanban-data
       mountPath: /var/data

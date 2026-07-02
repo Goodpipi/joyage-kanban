@@ -1,7 +1,7 @@
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { Plus } from "lucide-react";
-import type { ColumnId, Task } from "@/lib/kanban-types";
+import type { ColumnId, CustomTag, Task } from "@/lib/kanban-types";
 import { TaskCard } from "./TaskCard";
 import { cn } from "@/lib/utils";
 
@@ -15,6 +15,10 @@ interface Props {
   onDeleteTask: (id: string) => void;
   onArchiveTask: (id: string) => void;
   onChangeTask: (t: Task) => void;
+  customTags?: CustomTag[];
+  selectable?: boolean;
+  selectedIds?: Set<string>;
+  onSelectToggle?: (id: string) => void;
 }
 
 const accentByCol: Record<ColumnId, string> = {
@@ -24,7 +28,21 @@ const accentByCol: Record<ColumnId, string> = {
   done: "bg-emerald-400",
 };
 
-export function KanbanColumn({ id, title, hint, tasks, onAdd, onOpenTask, onDeleteTask, onArchiveTask, onChangeTask }: Props) {
+export function KanbanColumn({
+  id,
+  title,
+  hint,
+  tasks,
+  onAdd,
+  onOpenTask,
+  onDeleteTask,
+  onArchiveTask,
+  onChangeTask,
+  customTags,
+  selectable,
+  selectedIds,
+  onSelectToggle,
+}: Props) {
   const { setNodeRef, isOver } = useDroppable({ id });
 
   return (
@@ -59,6 +77,10 @@ export function KanbanColumn({ id, title, hint, tasks, onAdd, onOpenTask, onDele
             <TaskCard
               key={t.id}
               task={t}
+              customTags={customTags}
+              selectable={selectable}
+              selected={selectedIds?.has(t.id)}
+              onSelectToggle={onSelectToggle}
               onOpen={onOpenTask}
               onDelete={onDeleteTask}
               onArchive={onArchiveTask}

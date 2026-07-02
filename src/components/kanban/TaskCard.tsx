@@ -12,7 +12,16 @@ import {
 } from "lucide-react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { TAG_OPTIONS, avatarColor, type Task } from "@/lib/kanban-types";
+import {
+  PRIORITY_OPTIONS,
+  avatarColor,
+  isTaskDueToday,
+  isTaskOverdue,
+  resolveTagOptions,
+  type CustomTag,
+  type Task,
+} from "@/lib/kanban-types";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,6 +40,10 @@ interface Props {
   draggable?: boolean;
   menuMode?: "board" | "archived" | "none";
   extraAction?: React.ReactNode;
+  customTags?: CustomTag[];
+  selectable?: boolean;
+  selected?: boolean;
+  onSelectToggle?: (id: string) => void;
 }
 
 export function TaskCard({
@@ -43,6 +56,10 @@ export function TaskCard({
   draggable = true,
   menuMode = "board",
   extraAction,
+  customTags = [],
+  selectable = false,
+  selected = false,
+  onSelectToggle,
 }: Props) {
   const sortable = useSortable({ id: task.id, disabled: !draggable });
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = sortable;
@@ -60,7 +77,13 @@ export function TaskCard({
     : undefined;
 
   const initials = (task.assignee || "?").trim().slice(0, 2).toUpperCase();
-  const tags = (task.tags || []).map((id) => TAG_OPTIONS.find((t) => t.id === id)).filter(Boolean) as typeof TAG_OPTIONS;
+  const tagLookup = resolveTagOptions(customTags);
+  const tags = (task.tags || [])
+    .map((id) => tagLookup.find((t) => t.id === id) ?? { id, label: id, className: "bg-muted text-muted-foreground ring-1 ring-border" })
+    .filter(Boolean);
+  const priority = PRIORITY_OPTIONS.find((p) => p.id === task.priority);
+  const dueToday = isTaskDueToday(task);
+  const overdue = isTaskOverdue(task);
   const commentCount = task.comments?.length || 0;
   const imageCount = (task.descriptionImages?.length || 0) + (task.comments?.reduce((s, c) => s + c.images.length, 0) || 0);
   const showMenu = menuMode !== "none";
@@ -69,14 +92,30 @@ export function TaskCard({
     <div
       ref={draggable ? setNodeRef : undefined}
       style={style}
-      onClick={() => onOpen(task.id)}
+      onClick={() => {
+        if (selectable) {
+          onSelectToggle?.(task.id);
+          return;
+        }
+        onOpen(task.id);
+      }}
       className={cn(
         "glass-card group relative cursor-pointer rounded-xl p-3.5 transition-[transform,box-shadow] duration-300 ease-out hover:-translate-y-1 hover:shadow-[var(--shadow-card-hover)]",
         isDragging && "opacity-50 shadow-none",
+        selected && "ring-2 ring-primary ring-offset-2 ring-offset-transparent",
+        overdue && "border border-red-200/80",
+        dueToday && !overdue && "border border-amber-200/80",
       )}
     >
       <div className="absolute right-2 top-2 flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
-        {draggable && (
+        {selectable && (
+          <Checkbox
+            checked={selected}
+            onCheckedChange={() => onSelectToggle?.(task.id)}
+            aria-label="选择任务"
+          />
+        )}
+        {draggable && !selectable && (
           <button
             {...attributes}
             {...listeners}
@@ -86,7 +125,7 @@ export function TaskCard({
             <GripVertical className="h-4 w-4" />
           </button>
         )}
-        {showMenu && (
+        {showMenu && !selectable && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -99,10 +138,7 @@ export function TaskCard({
             <DropdownMenuContent align="end" className="min-w-[8.5rem]">
               {menuMode === "archived" ? (
                 <>
-                  <DropdownMenuItem
-                    onClick={() => onRestore?.(task.id)}
-                    className="gap-2"
-                  >
+                  <DropdownMenuItem onClick={() => onRestore?.(task.id)} className="gap-2">
                     <ArchiveRestore className="h-4 w-4" />
                     恢复任务
                   </DropdownMenuItem>
@@ -116,10 +152,7 @@ export function TaskCard({
                 </>
               ) : (
                 <>
-                  <DropdownMenuItem
-                    onClick={() => onArchive?.(task.id)}
-                    className="gap-2"
-                  >
+                  <DropdownMenuItem onClick={() => onArchive?.(task.id)} className="gap-2">
                     <Archive className="h-4 w-4" />
                     归档任务
                   </DropdownMenuItem>
@@ -137,10 +170,17 @@ export function TaskCard({
         )}
       </div>
 
-      <div className={cn("min-w-0 pr-14", showMenu || draggable ? "" : "pr-0")} onClick={(e) => { if (editing) e.stopPropagation(); }}>
-        <span className="mb-1 inline-block rounded-md bg-primary-soft px-1.5 py-0.5 font-mono text-[10px] font-semibold tracking-wide text-primary">
-          {task.code}
-        </span>
+      <div className={cn("min-w-0 pr-14", showMenu || draggable || selectable ? "" : "pr-0")} onClick={(e) => { if (editing) e.stopPropagation(); }}>
+        <div className="mb-1 flex flex-wrap items-center gap-1.5">
+          <span className="inline-block rounded-md bg-primary-soft px-1.5 py-0.5 font-mono text-[10px] font-semibold tracking-wide text-primary">
+            {task.code}
+          </span>
+          {priority && (
+            <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium", priority.className)}>
+              {priority.label}
+            </span>
+          )}
+        </div>
         {editing ? (
           <input
             autoFocus
@@ -157,7 +197,7 @@ export function TaskCard({
         ) : (
           <h4
             className="truncate text-sm font-semibold leading-snug text-foreground hover:text-primary"
-            onClick={(e) => { if (onChange) { e.stopPropagation(); setEditing(true); } }}
+            onClick={(e) => { if (onChange && !selectable) { e.stopPropagation(); setEditing(true); } }}
             title={onChange ? "Click to edit" : undefined}
           >
             {task.title || <span className="text-muted-foreground/60">Untitled</span>}
@@ -184,9 +224,15 @@ export function TaskCard({
       <div className="mt-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
           {task.dueDate && (
-            <span className="glass-soft flex items-center gap-1 rounded-full px-2 py-0.5">
+            <span className={cn(
+              "glass-soft flex items-center gap-1 rounded-full px-2 py-0.5",
+              overdue && "bg-red-50 text-red-600 ring-1 ring-red-200",
+              dueToday && !overdue && "bg-amber-50 text-amber-700 ring-1 ring-amber-200",
+            )}>
               <CalendarIcon className="h-3 w-3" />
               {format(new Date(task.dueDate), "MMM d")}
+              {overdue && " · 逾期"}
+              {dueToday && !overdue && " · 今日"}
             </span>
           )}
           {commentCount > 0 && (

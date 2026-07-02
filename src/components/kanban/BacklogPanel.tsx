@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ArrowRight, Plus, X } from "lucide-react";
-import type { Task } from "@/lib/kanban-types";
+import type { CustomTag, Task } from "@/lib/kanban-types";
 import { TaskCard } from "./TaskCard";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 
@@ -14,9 +14,10 @@ interface Props {
   onOpenTask: (id: string) => void;
   onDeleteTask: (id: string) => void;
   onArchiveTask: (id: string) => void;
+  customTags?: CustomTag[];
 }
 
-export function BacklogPanel({ open, onOpenChange, tasks, setTasks, onAdd, onSendToTodo, onOpenTask, onDeleteTask, onArchiveTask }: Props) {
+export function BacklogPanel({ open, onOpenChange, tasks, setTasks, onAdd, onSendToTodo, onOpenTask, onDeleteTask, onArchiveTask, customTags }: Props) {
   const [filter, setFilter] = useState("");
 
   const visible = tasks.filter((t) => {
@@ -75,6 +76,7 @@ export function BacklogPanel({ open, onOpenChange, tasks, setTasks, onAdd, onSen
             <TaskCard
               key={t.id}
               task={t}
+              customTags={customTags}
               draggable={false}
               onOpen={onOpenTask}
               onDelete={onDeleteTask}
