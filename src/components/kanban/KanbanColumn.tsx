@@ -72,7 +72,7 @@ export function KanbanColumn({
       <p className="mb-2 shrink-0 px-1.5 text-[11px] text-muted-foreground/70">{hint}</p>
 
       <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
-        <div className="kanban-column-scroll flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto overscroll-y-contain pr-1">
+        <div className="kanban-column-scroll flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto overscroll-y-contain p-1.5">
           {tasks.map((t) => (
             <TaskCard
               key={t.id}

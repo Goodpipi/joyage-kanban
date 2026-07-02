@@ -127,7 +127,7 @@ export function ArchivedPanel({
             </div>
           )}
 
-          <div className="mt-4 flex flex-col gap-2.5 overflow-y-auto pb-6" style={{ maxHeight: "calc(100vh - 220px)" }}>
+          <div className="mt-4 flex flex-col gap-2.5 overflow-y-auto p-1.5 pb-6" style={{ maxHeight: "calc(100vh - 220px)" }}>
             {visible.length === 0 && (
               <div className="glass-soft rounded-xl px-4 py-10 text-center text-sm text-muted-foreground">
                 暂无已归档任务。

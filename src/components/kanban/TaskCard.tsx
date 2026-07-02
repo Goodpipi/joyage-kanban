@@ -102,7 +102,7 @@ export function TaskCard({
       className={cn(
         "glass-card group relative cursor-pointer rounded-xl p-3.5 transition-[transform,box-shadow] duration-300 ease-out hover:-translate-y-1 hover:shadow-[var(--shadow-card-hover)]",
         isDragging && "opacity-50 shadow-none",
-        selected && "ring-2 ring-primary ring-offset-2 ring-offset-transparent",
+        selected && "ring-2 ring-inset ring-primary",
         overdue && "border border-red-200/80",
         dueToday && !overdue && "border border-amber-200/80",
       )}
